@@ -1,0 +1,192 @@
+#----------------------------------------------------------------------
+# Copyright 2018 Marco Inacio <pythonpackages@marcoinacio.com>
+#
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, version 3 of the License.
+
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+#GNU General Public License for more details.
+
+#You should have received a copy of the GNU General Public License
+#along with this program.    If not, see <http://www.gnu.org/licenses/>.
+#----------------------------------------------------------------------
+
+import torch
+from torch.autograd import Variable
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+import numpy as np
+import time
+from sklearn.base import BaseEstimator
+
+from .utils import fourierseries, _np_to_var
+
+class NNFlexCode(BaseEstimator):
+    def __init__(self,
+                 ncomponents=100,
+                 beta_loss_penal=0,
+                 nn_param_loss_penal=0,
+                 beta_reducer=0,
+                 loss_of_train_using_regression=False,
+                 nepoch=100,
+
+                 batch_initial=200,
+                 batch_step_multiplier=300,
+                 batch_step_epoch_expon=1.3,
+                 batch_max_size=10000,
+
+                 lr_initial=.1,
+                 lr_step_multiplier=1,
+                 lr_step_epoch_expon=1.3,
+                 lr_min_size=0,
+
+                 grid_size=1000,
+                 gpu=True,
+                 verbose=True,
+                 ):
+
+        for prop in dir():
+            if prop != "self":
+                setattr(self, prop, locals()[prop])
+
+        self.gpu = self.gpu and torch.cuda.is_available()
+
+    def fit(self, x_train, y_train):
+        self.neural_net = self._construct_neural_net(x_train.shape[1])
+        self.epoch_count = 0
+
+        self.z_grid = np.linspace(0, 1, self.grid_size,
+                                  dtype=np.float32)
+        self.phi_grid = np.array(fourierseries(self.z_grid,
+            self.ncomponents).T)
+        self.phi_grid = _np_to_var(self.phi_grid)
+
+        if self.gpu:
+            self.move_to_gpu()
+
+        return self.continue_fit(x_train, y_train, self.nepoch)
+
+    def move_to_gpu(self):
+        self.neural_net.cuda()
+        self.phi_grid = self.phi_grid.cuda()
+        self.gpu = True
+
+        return self
+
+    def move_to_cpu(self):
+        self.neural_net.cpu()
+        self.phi_grid = self.phi_grid.cpu()
+        self.gpu = False
+
+        return self
+
+    def continue_fit(self, x_train, y_train, nepoch):
+        criterion = nn.MSELoss()
+
+        inputv = _np_to_var(x_train)
+        target = _np_to_var(fourierseries(y_train, self.ncomponents))
+
+        start_time = time.process_time()
+        for _ in range(nepoch):
+            batch_size = int(min(10_000,
+                self.batch_initial +
+                self.batch_step_multiplier *
+                self.epoch_count**self.batch_step_epoch_expon))
+            lr_val = max(self.lr_min_size,
+                self.lr_initial /
+                (1 + self.lr_step_multiplier
+                 * self.epoch_count**self.lr_step_epoch_expon))
+            optimizer = optim.SGD(self.neural_net.parameters(),
+                                  lr=lr_val)
+            permutation = torch.randperm(target.shape[0])
+
+            inputv_perm = inputv.data[permutation]
+            target_perm = target.data[permutation]
+            inputv_perm = Variable(inputv_perm.pin_memory())
+            target_perm = Variable(target_perm.pin_memory())
+
+            for i in range(0, target.shape[0] + batch_size, batch_size):
+                if i < target.shape[0]:
+                    inputv_next = inputv_perm[i:i+batch_size]
+                    target_next = target_perm[i:i+batch_size]
+
+                    if self.gpu:
+                        inputv_next = inputv_next.cuda(async=True)
+                        target_next = target_next.cuda(async=True)
+
+                if i != 0:
+                    optimizer.zero_grad()
+                    output = self.neural_net(inputv_this)
+                    if self.loss_of_train_using_regression:
+                        loss = criterion(output, target_this)
+                    else:
+                        loss = -2 * (output * target_this).sum(1).mean()
+                        loss += (Variable.mm(output,
+                            self.phi_grid)**2).mean()
+                    loss.backward()
+                    optimizer.step()
+
+                inputv_this = inputv_next
+                target_this = target_next
+            if self.verbose:
+                print("Epoch", self.epoch_count, "done", flush=True)
+            self.epoch_count += 1
+
+        elapsed_time = time.process_time() - start_time
+        if self.verbose:
+            print("Elapsed time:", elapsed_time, flush=True)
+
+        return self
+
+    def _predict(self, x_test):
+        inputv = _np_to_var(x_test, volatile=True)
+        if self.gpu:
+            inputv = inputv.cuda()
+        output_test = self.neural_net(inputv)
+        return output_test
+
+    def score(self, x_test, y_test):
+        target = _np_to_var(fourierseries(y_test, self.ncomponents))
+        if self.gpu:
+            target = target.cuda()
+        output_test = self._predict(x_test)
+        loss_test = -2 * (output_test * target).sum(1).mean()
+        loss_test += (Variable.mm(output_test, self.phi_grid)**2).mean()
+
+        return -1 * loss_test.data.cpu().numpy()[0]
+
+    def predict(self, x_test):
+        return self._predict(x_test).data.cpu().numpy()[0]
+
+    def _construct_neural_net(self, x_dim):
+        class NeuralNet(nn.Module):
+            def __init__(self, x_dim, ncomponents):
+                super(NeuralNet, self).__init__()
+                self.fc1 = nn.Linear(x_dim, ncomponents)
+                self.fc2 = nn.Linear(ncomponents, ncomponents)
+                self.fc3 = nn.Linear(ncomponents, ncomponents)
+                self.fc4 = nn.Linear(ncomponents, ncomponents)
+                self.penal_unc_vals = nn.Parameter(
+                    torch.zeros(ncomponents - 1 ) - 10.0)
+                self.penalize = False
+
+            def forward(self, x):
+                x = F.elu(self.fc1(x))
+                x = self.fc2(x)
+                x = F.elu(self.fc3(x))
+                x = self.fc4(x)
+                if self.penalize:
+                    penal = Variable(x.data.new(ncomponents))
+                    penal[0] = 1.0
+                    for i in range(1, ncomponents):
+                        penal[i] = (Variable.exp(self.penal_unc_vals[i-1])
+                                    + penal[i-1])
+                    self.last_penal = penal
+                    x = x / penal
+                return x
+        return NeuralNet(x_dim, self.ncomponents)
