@@ -34,7 +34,7 @@ class _BaseNNFlexCode(BaseEstimator):
                  nn_param_loss_penal=0,
                  beta_reducer=1,
 
-                 loss_of_train_using_regression=False,
+                 loss_of_train_using_regression=True,
                  nepoch=100,
 
                  batch_initial=200,
@@ -145,9 +145,9 @@ class _BaseNNFlexCode(BaseEstimator):
                     if self.loss_of_train_using_regression:
                         loss = criterion(output, target_this)
                     else:
-                        loss = -2 * (output * target_this).sum(1).mean()
-                        loss += (Variable.mm(output,
-                            self.phi_grid)**2).mean()
+                        loss1 = -2 * (output * target_this).sum(1)
+                        loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
+                        loss = loss1.mean() + loss2.mean()
                         #Correction for last batch which might
                         #be shorter
                     if (batch_size > inputv_next.shape[0]):
@@ -191,8 +191,9 @@ class _BaseNNFlexCode(BaseEstimator):
 
             if i != 0:
                 output = self.neural_net(inputv_this)
-                loss = -2 * (output * target_this).sum(1).mean()
-                loss += (Variable.mm(output, self.phi_grid)**2).mean()
+                loss1 = -2 * (output * target_this).sum(1)
+                loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
+                loss = loss1.mean() + loss2.mean()
                 loss_vals.append(loss.data.cpu().numpy()[0])
                 batch_sizes.append(inputv_this.shape[0])
 

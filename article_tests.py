@@ -54,7 +54,6 @@ y_test = np.array(y_test, dtype='f4')
 y_test = torch.from_numpy(y_test)
 y_test = F.sigmoid(y_test).numpy()
 
-
 def true_pdf_calc(x_pred, y_pred):
     logit_y_pred = - np.log(1/y_pred - 1)
     mu = np.dot(x_pred, beta) + beta0
