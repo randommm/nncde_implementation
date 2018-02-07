@@ -23,7 +23,6 @@ from sklearn.externals import joblib
 
 class _FourierSeries:
     def __init__(self):
-        self.cache_dir = None
         self._fourier_component = self._base_fourier_component
 
     def __call__(self, x, ncomponents):
@@ -62,9 +61,18 @@ class _FourierSeries:
 
 fourierseries = _FourierSeries()
 
-def set_cache_dir(cachefile, bytes_limit=10*2**30):
-    cache = joblib.Memory(cachedir=cachefile, bytes_limit=bytes_limit,
+class _CacheData():
+    def __init__(self):
+        self.cache_dir = None
+        self.cache = None
+
+cache_data = _CacheData()
+
+def set_cache_dir(cachedir, bytes_limit=10*2**30):
+    cache = joblib.Memory(cachedir=cachedir, bytes_limit=bytes_limit,
                           verbose=0).cache
+    cache_data.cache = cache
+    cache_data.cachedir = cachedir
     fsc_cached = cache(fourierseries._base_fourier_component)
     fourierseries._fourier_component = fsc_cached
 
