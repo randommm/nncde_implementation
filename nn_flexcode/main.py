@@ -11,7 +11,7 @@
 #GNU General Public License for more details.
 
 #You should have received a copy of the GNU General Public License
-#along with this program.    If not, see <http://www.gnu.org/licenses/>.
+#along with this program. If not, see <http://www.gnu.org/licenses/>.
 #----------------------------------------------------------------------
 from __future__ import division
 
@@ -30,9 +30,9 @@ from .utils import fourierseries, _np_to_var, cache_data
 class _BaseNNFlexCode(BaseEstimator):
     def __init__(self,
                  ncomponents=100,
-                 beta_loss_penal=0,
-                 nn_param_loss_penal=0,
-                 beta_reducer=1,
+                 beta_loss_penal_exp=0,
+                 beta_loss_penal_base=0,
+                 nn_weights_loss_penal=0,
 
                  loss_of_train_using_regression=True,
                  nepoch=100,
@@ -101,7 +101,8 @@ class _BaseNNFlexCode(BaseEstimator):
         assert(self.lr_step_multiplier > 0)
         assert(self.lr_step_epoch_expon > 0)
         assert(self.lr_min_size >= 0)
-        assert(self.beta_reducer > 0 and self.beta_reducer <= 1)
+        assert(self.beta_loss_penal_exp >= 0)
+        assert(self.beta_loss_penal_base >= 0)
 
         inputv = _np_to_var(x_train)
         target = _np_to_var(fourierseries(y_train, self.ncomponents))
@@ -142,16 +143,41 @@ class _BaseNNFlexCode(BaseEstimator):
                 if i != 0:
                     optimizer.zero_grad()
                     output = self.neural_net(inputv_this)
+
+                    # Main loss
                     if self.loss_of_train_using_regression:
                         loss = criterion(output, target_this)
                     else:
                         loss1 = -2 * (output * target_this).sum(1)
-                        loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
-                        loss = loss1.mean() + loss2.mean()
-                        #Correction for last batch which might
-                        #be shorter
+                        loss1 = loss1.mean()
+                        loss2 = (Variable.mm(output, self.phi_grid)
+                                 .sum(1)**2)
+                        loss2 = loss2.mean()
+                        loss = loss1 + loss2
+
+                    # Penalize on betas
+                    if self.beta_loss_penal_base != 0:
+                        penal = output ** 2
+                        if self.beta_loss_penal_exp != 0:
+                            aranged = Variable(loss.data.new(
+                                range(1, self.ncomponents + 1))
+                                ** self.beta_loss_penal_exp)
+                            penal = penal * aranged
+                        penal = penal.sum(1).mean()
+                        penal = penal * self.beta_loss_penal_base
+                        loss += penal
+
+                    # Penalize on nn weights
+                    if self.nn_weights_loss_penal != 0:
+                        penal = self.neural_net.parameters()
+                        penal = map(lambda x: (x**2).sum(), penal)
+                        penal = Variable.cat(tuple(penal)).sum()
+                        loss += self.nn_weights_loss_penal * penal
+
+                    # Correction for last batch as it might be smaller
                     if (batch_size > inputv_next.shape[0]):
                         loss *= inputv_next.shape[0] / batch_size
+
                     loss.backward()
                     optimizer.step()
 
@@ -192,8 +218,10 @@ class _BaseNNFlexCode(BaseEstimator):
             if i != 0:
                 output = self.neural_net(inputv_this)
                 loss1 = -2 * (output * target_this).sum(1)
+                loss1 = loss1.mean()
                 loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
-                loss = loss1.mean() + loss2.mean()
+                loss2 = loss2.mean()
+                loss = loss1 + loss2
                 loss_vals.append(loss.data.cpu().numpy()[0])
                 batch_sizes.append(inputv_this.shape[0])
 
@@ -216,14 +244,13 @@ class _BaseNNFlexCode(BaseEstimator):
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
-            def __init__(self, x_dim, ncomponents, beta_reducer):
+            def __init__(self, x_dim, ncomponents):
                 super(NeuralNet, self).__init__()
                 self.fc1 = nn.Linear(x_dim, ncomponents)
                 self.fc2 = nn.Linear(ncomponents, ncomponents)
                 self.fc3 = nn.Linear(ncomponents, ncomponents)
                 self.fc4 = nn.Linear(ncomponents, ncomponents)
                 self.fc5 = nn.Linear(ncomponents, ncomponents)
-                self.beta_reducer = np.array([beta_reducer])
 
             def forward(self, x):
                 x = F.relu(self.fc1(x))
@@ -231,14 +258,8 @@ class _BaseNNFlexCode(BaseEstimator):
                 x = F.relu(self.fc3(x))
                 x = F.relu(self.fc4(x))
                 x = self.fc5(x)
-                if self.beta_reducer != 1:
-                    aranged = Variable(x.data.new(range(ncomponents)))
-                    reducer = Variable(x.data.new(self.beta_reducer))
-                    reducer = reducer ** aranged
-                    x = x * reducer
                 return x
-        self.neural_net = NeuralNet(self.x_dim, self.ncomponents,
-                                    self.beta_reducer)
+        self.neural_net = NeuralNet(self.x_dim, self.ncomponents)
 
     def __getstate__(self):
         d = self.__dict__.copy()

@@ -31,7 +31,7 @@ np.random.seed(10)
 n_train = 100_000
 n_test = 800
 x_dim = 45
-ncomponents = 100
+ncomponents = 500
 
 beta = stats.norm.rvs(size=x_dim, scale=0.2)
 sigma = 0.8
@@ -61,7 +61,14 @@ def true_pdf_calc(x_pred, y_pred):
     density /= np.abs(y_pred - y_pred**2)
     return density
 
-nnf_obj = NNFlexCode(ncomponents=ncomponents, verbose=2, loss_of_train_using_regression=True)
+nnf_obj = NNFlexCode(
+ncomponents=ncomponents,
+verbose=2,
+beta_loss_penal_exp=0.4,
+beta_loss_penal_base=0.3,
+nn_weights_loss_penal=0.1,
+loss_of_train_using_regression=True,
+)
 nnf_obj.fit(x_train, y_train)
 #nnf_obj.move_to_cpu()
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
@@ -70,8 +77,8 @@ print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
 est_pdf = nnf_obj.predict(x_test, y_test)
 true_pdf = true_pdf_calc(x_test, y_test)
 sq_errors = (est_pdf - true_pdf)**2
-print("Squared density errors for test:", sq_errors)
-print("Average squared density errors for test:", sq_errors.mean())
+print("Squared density errors for test:\n", sq_errors)
+print("\nAverage squared density errors for test:\n", sq_errors.mean())
 
 gs_params = {'ncomponents': np.arange(200, 199, -1)}
 gs_clf = GridSearchCV(nnf_obj, gs_params, verbose=100)
