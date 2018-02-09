@@ -21,7 +21,7 @@ import numpy as np
 import scipy.stats as stats
 
 from nn_flexcode import NNFlexCode, set_cache_dir
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
 set_cache_dir("nn_flexcode_fs_cache", bytes_limit=30*2**30)
 
@@ -80,10 +80,21 @@ sq_errors = (est_pdf - true_pdf)**2
 print("Squared density errors for test:\n", sq_errors)
 print("\nAverage squared density errors for test:\n", sq_errors.mean())
 
-gs_params = {'ncomponents': np.arange(200, 199, -1)}
-gs_clf = GridSearchCV(nnf_obj, gs_params, verbose=100)
+#gs_params = dict(
+#ncomponents = np.arange(500, 10, -10),
+#beta_loss_penal_exp = np.arange(0, 2, .1),
+#beta_loss_penal_base = np.arange(0, 2, .1),
+#nn_weights_loss_penal = np.arange(0, 2, .1),
+#)
+gs_params = dict(
+ncomponents = np.arange(500, 10, -10),
+beta_loss_penal_exp = stats.lognorm(loc=0, scale=1, s=2),
+beta_loss_penal_base = stats.lognorm(loc=0, scale=1, s=2),
+nn_weights_loss_penal = stats.lognorm(loc=0, scale=1, s=2),
+)
+gs_clf = RandomizedSearchCV(nnf_obj, gs_params, n_iter=10)
 
-#gs_clf.fit(x_train, y_train)
-#gs_clf.predict(x_test)
-#gs_clf.score(x_test, y_test)
+gs_clf.fit(x_train, y_train)
+gs_clf.predict(x_test)
+gs_clf.score(x_test, y_test)
 

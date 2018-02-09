@@ -34,20 +34,20 @@ class _BaseNNFlexCode(BaseEstimator):
                  beta_loss_penal_base=0,
                  nn_weights_loss_penal=0,
 
-                 loss_of_train_using_regression=True,
-                 nepoch=100,
+                 nepoch=500,
 
-                 batch_initial=200,
-                 batch_step_multiplier=300,
-                 batch_step_epoch_expon=1.3,
+                 batch_initial=100,
+                 batch_step_multiplier=5.0,
+                 batch_step_epoch_expon=20.0,
                  batch_max_size=10000,
 
-                 lr_initial=.1,
-                 lr_step_multiplier=1,
-                 lr_step_epoch_expon=1.3,
+                 lr_initial=1,
+                 lr_step_multiplier=0.0001,
+                 lr_step_epoch_expon=3.0,
                  lr_min_size=0,
 
-                 grid_size=1000,
+                 loss_of_train_using_regression=True,
+                 grid_size=2000,
                  gpu=True,
                  verbose=1,
                  ):
@@ -73,7 +73,23 @@ class _BaseNNFlexCode(BaseEstimator):
         if self.gpu:
             self.move_to_gpu()
 
-        return self.continue_fit(x_train, y_train, self.nepoch)
+        n_attempts = 0
+        while True:
+            try:
+                return self.continue_fit(x_train, y_train, self.nepoch)
+            except RuntimeError as err:
+                print("Warning: RuntimeError with message:", err)
+                if self.epoch_count >= 1 or n_attempts >= 30:
+                    raise err
+                elif n_attempts >= 2:
+                    self.lr_initial *= .5
+                    print("Cutting lr_initial by half and retrying")
+                else:
+                    print("Retrying")
+                self._construct_neural_net()
+                if self.gpu:
+                    self.move_to_gpu()
+                n_attempts += 1
 
     def move_to_gpu(self):
         self.neural_net.cuda()
@@ -110,6 +126,9 @@ class _BaseNNFlexCode(BaseEstimator):
         batch_max_size = min(self.batch_max_size, x_train.shape[0])
 
         start_time = time.process_time()
+
+        loss_vals = []
+        batch_sizes = []
         for _ in range(nepoch):
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
@@ -159,9 +178,11 @@ class _BaseNNFlexCode(BaseEstimator):
                     if self.beta_loss_penal_base != 0:
                         penal = output ** 2
                         if self.beta_loss_penal_exp != 0:
-                            aranged = Variable(loss.data.new(
-                                range(1, self.ncomponents + 1))
-                                ** self.beta_loss_penal_exp)
+                            aranged = Variable(
+                                loss.data.new(
+                                    range(1, self.ncomponents + 1))
+                                ** self.beta_loss_penal_exp
+                                )
                             penal = penal * aranged
                         penal = penal.sum(1).mean()
                         penal = penal * self.beta_loss_penal_base
@@ -172,11 +193,20 @@ class _BaseNNFlexCode(BaseEstimator):
                         penal = self.neural_net.parameters()
                         penal = map(lambda x: (x**2).sum(), penal)
                         penal = Variable.cat(tuple(penal)).sum()
-                        loss += self.nn_weights_loss_penal * penal
+                        loss += penal * self.nn_weights_loss_penal
 
                     # Correction for last batch as it might be smaller
-                    if (batch_size > inputv_next.shape[0]):
-                        loss *= inputv_next.shape[0] / batch_size
+                    this_batch_size = inputv_this.shape[0]
+                    if (batch_size > inputv_this.shape[0]):
+                        loss *= this_batch_size / batch_size
+
+                    np_loss = loss.data.cpu().numpy()[0]
+                    if np.isnan(np_loss):
+                        raise RuntimeError("Loss is NaN")
+
+                    if self.verbose >= 2:
+                        loss_vals.append(np_loss)
+                        batch_sizes.append(this_batch_size)
 
                     loss.backward()
                     optimizer.step()
@@ -184,7 +214,9 @@ class _BaseNNFlexCode(BaseEstimator):
                 inputv_this = inputv_next
                 target_this = target_next
             if self.verbose >= 2:
-                print("Epoch", self.epoch_count, "done", flush=True)
+                avgloss = np.average(loss_vals, weights=batch_sizes)
+                print("Epoch", self.epoch_count, "done, train loss",
+                      avgloss, flush=True)
             self.epoch_count += 1
 
         elapsed_time = time.process_time() - start_time
