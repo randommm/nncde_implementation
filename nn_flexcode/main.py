@@ -27,14 +27,14 @@ from sklearn.base import BaseEstimator
 
 from .utils import fourierseries, _np_to_var, cache_data
 
-class _BaseNNFlexCode(BaseEstimator):
+class NNFlexCode(BaseEstimator):
     def __init__(self,
                  ncomponents=100,
                  beta_loss_penal_exp=0,
                  beta_loss_penal_base=0,
                  nn_weights_loss_penal=0,
 
-                 nepoch=500,
+                 nepoch=100,
 
                  batch_initial=100,
                  batch_step_multiplier=5.0,
@@ -44,7 +44,7 @@ class _BaseNNFlexCode(BaseEstimator):
                  lr_initial=1,
                  lr_step_multiplier=0.0001,
                  lr_step_epoch_expon=3.0,
-                 lr_min_size=0,
+                 lr_min_size=1e-30,
 
                  loss_of_train_using_regression=True,
                  grid_size=2000,
@@ -58,8 +58,37 @@ class _BaseNNFlexCode(BaseEstimator):
 
         self.gpu = self.gpu and torch.cuda.is_available()
 
+
     def fit(self, x_train, y_train):
         self.ncomponents = int(self.ncomponents)
+        max_penal = self.ncomponents ** self.beta_loss_penal_exp
+        if max_penal > 1e4:
+            new_val = np.log(1e4) / np.log(self.ncomponents)
+            print("Warning: beta_loss_penal_exp is very large for "
+                  "this amount of components (ncomponents).\n",
+                  "Will automatically decrease it to", new_val,
+                  "to avoid having the model blow up.")
+            self.beta_loss_penal_exp = new_val
+
+        n_attempts = 0
+        while True:
+            try:
+                return self._try_fit(x_train, y_train)
+            except RuntimeError as err:
+                print("Warning: RuntimeError with message:", err)
+                if n_attempts >= 100:
+                    raise RuntimeError("Gave up after 100 attempts")
+                elif n_attempts >= 4:
+                    self.lr_initial *= .5
+                    print("Cutting lr_initial by half and retrying")
+                else:
+                    print("Retrying")
+                self._construct_neural_net()
+                if self.gpu:
+                    self.move_to_gpu()
+                n_attempts += 1
+
+    def _try_fit(self, x_train, y_train):
         self.x_dim = x_train.shape[1]
         self._construct_neural_net()
         self.epoch_count = 0
@@ -73,23 +102,7 @@ class _BaseNNFlexCode(BaseEstimator):
         if self.gpu:
             self.move_to_gpu()
 
-        n_attempts = 0
-        while True:
-            try:
-                return self.continue_fit(x_train, y_train, self.nepoch)
-            except RuntimeError as err:
-                print("Warning: RuntimeError with message:", err)
-                if self.epoch_count >= 1 or n_attempts >= 30:
-                    raise err
-                elif n_attempts >= 2:
-                    self.lr_initial *= .5
-                    print("Cutting lr_initial by half and retrying")
-                else:
-                    print("Retrying")
-                self._construct_neural_net()
-                if self.gpu:
-                    self.move_to_gpu()
-                n_attempts += 1
+        return self.improve_fit(x_train, y_train, self.nepoch)
 
     def move_to_gpu(self):
         self.neural_net.cuda()
@@ -105,7 +118,7 @@ class _BaseNNFlexCode(BaseEstimator):
 
         return self
 
-    def continue_fit(self, x_train, y_train, nepoch):
+    def improve_fit(self, x_train, y_train, nepoch):
         criterion = nn.MSELoss()
 
         assert(self.batch_initial >= 1)
@@ -117,8 +130,10 @@ class _BaseNNFlexCode(BaseEstimator):
         assert(self.lr_step_multiplier > 0)
         assert(self.lr_step_epoch_expon > 0)
         assert(self.lr_min_size >= 0)
+
         assert(self.beta_loss_penal_exp >= 0)
         assert(self.beta_loss_penal_base >= 0)
+        assert(self.nn_weights_loss_penal >= 0)
 
         inputv = _np_to_var(x_train)
         target = _np_to_var(fourierseries(y_train, self.ncomponents))
@@ -184,7 +199,7 @@ class _BaseNNFlexCode(BaseEstimator):
                                 ** self.beta_loss_penal_exp
                                 )
                             penal = penal * aranged
-                        penal = penal.sum(1).mean()
+                        penal = penal.mean()
                         penal = penal * self.beta_loss_penal_base
                         loss += penal
 
@@ -262,7 +277,8 @@ class _BaseNNFlexCode(BaseEstimator):
 
         return -1 * np.average(loss_vals, weights=batch_sizes)
 
-    def predict(self, x_pred, y_pred):
+    def predict(self, x_pred_and_y_pred_list):
+        x_pred, y_pred = x_pred_and_y_pred_list
         inputv = _np_to_var(x_pred, volatile=True)
         target = _np_to_var(fourierseries(y_pred, self.ncomponents),
                             volatile=True)
@@ -311,11 +327,12 @@ class _BaseNNFlexCode(BaseEstimator):
             if self.gpu:
                 self.move_to_gpu()
 
-class NNFlexCode(_BaseNNFlexCode):
+class NNFlexCodeCached(NNFlexCode):
     def fit(self, x_train, y_train):
         cache = cache_data.cache
         if cache is None:
-            return super.fit(x_train, y_train)
+            raise("Must set cache first!")
+            # return super.fit(x_train, y_train)
 
         fit_cached = cache(self.fit_cacheable, ignore=["self"])
         new_self = fit_cached(x_train, y_train, self.get_params())
@@ -328,7 +345,8 @@ class NNFlexCode(_BaseNNFlexCode):
     def score(self, x_test, y_test):
         cache = cache_data.cache
         if cache is None:
-            return super.score(x_train, y_train)
+            raise("Must set cache first!")
+            # return super.score(x_train, y_train)
 
         score_cached = cache(self.score_cacheable, ignore=["self"])
         return score_cached(x_test, y_test, self.get_params())
