@@ -46,8 +46,7 @@ class NNFlexCode(BaseEstimator):
                  lr_step_epoch_expon=3.0,
                  lr_min_size=1e-30,
 
-                 loss_of_train_using_regression=True,
-                 grid_size=2000,
+                 grid_size=10000,
                  gpu=True,
                  verbose=1,
                  ):
@@ -93,12 +92,6 @@ class NNFlexCode(BaseEstimator):
         self._construct_neural_net()
         self.epoch_count = 0
 
-        self.z_grid = np.linspace(0, 1, self.grid_size,
-                                  dtype=np.float32)
-        self.phi_grid = np.array(fourierseries(self.z_grid,
-            self.ncomponents).T)
-        self.phi_grid = _np_to_var(self.phi_grid)
-
         if self.gpu:
             self.move_to_gpu()
 
@@ -106,14 +99,16 @@ class NNFlexCode(BaseEstimator):
 
     def move_to_gpu(self):
         self.neural_net.cuda()
-        self.phi_grid = self.phi_grid.cuda()
+        if hasattr(self, "phi_grid"):
+            self.phi_grid = self.phi_grid.cuda()
         self.gpu = True
 
         return self
 
     def move_to_cpu(self):
         self.neural_net.cpu()
-        self.phi_grid = self.phi_grid.cpu()
+        if hasattr(self, "phi_grid"):
+            self.phi_grid = self.phi_grid.cpu()
         self.gpu = False
 
         return self
@@ -179,15 +174,7 @@ class NNFlexCode(BaseEstimator):
                     output = self.neural_net(inputv_this)
 
                     # Main loss
-                    if self.loss_of_train_using_regression:
-                        loss = criterion(output, target_this)
-                    else:
-                        loss1 = -2 * (output * target_this).sum(1)
-                        loss1 = loss1.mean()
-                        loss2 = (Variable.mm(output, self.phi_grid)
-                                 .sum(1)**2)
-                        loss2 = loss2.mean()
-                        loss = loss1 + loss2
+                    loss = criterion(output, target_this)
 
                     # Penalize on betas
                     if self.beta_loss_penal_base != 0:
@@ -264,10 +251,50 @@ class NNFlexCode(BaseEstimator):
 
             if i != 0:
                 output = self.neural_net(inputv_this)
+
                 loss1 = -2 * (output * target_this).sum(1)
                 loss1 = loss1.mean()
+
+                #from scipy.integrate import quad
+                #np_out = output.data.cpu().numpy()
+                #def integrate_func(y):
+                    #return (np_out_row *
+                    #fourierseries(y, self.ncomponents, True)).sum()**2
+                #loss2 = 0
+                #for np_out_row in np_out:
+                    #loss2 += quad(integrate_func, 0, 1, limit=1000)[0]
+                #loss2 = loss2 / np_out.shape[0]
+                #print(loss2)
+
+                #for grid_size in range(1000, 50000, 1000):
+                    #self.grid_size = grid_size
+                    #print("for grid_size", self.grid_size)
+                    #if not hasattr(self, "phi_grid"):
+                        #z_grid = np.linspace(0, 1, self.grid_size,
+                                             #dtype=np.float32)
+                        #self.phi_grid = np.array(fourierseries(z_grid,
+                                                 #self.ncomponents).T)
+                        #self.phi_grid = _np_to_var(self.phi_grid)
+                        #if self.gpu:
+                            #self.phi_grid = self.phi_grid.cuda()
+
+                    #loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
+                    #loss2 = loss2.mean()
+                    #del(self.phi_grid)
+                    #print(loss2)
+
+                if not hasattr(self, "phi_grid"):
+                    z_grid = np.linspace(0, 1, self.grid_size,
+                                         dtype=np.float32)
+                    self.phi_grid = np.array(fourierseries(z_grid,
+                                             self.ncomponents).T)
+                    self.phi_grid = _np_to_var(self.phi_grid)
+                    if self.gpu:
+                        self.phi_grid = self.phi_grid.cuda()
+
                 loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
                 loss2 = loss2.mean()
+
                 loss = loss1 + loss2
                 loss_vals.append(loss.data.cpu().numpy()[0])
                 batch_sizes.append(inputv_this.shape[0])
@@ -311,9 +338,12 @@ class NNFlexCode(BaseEstimator):
 
     def __getstate__(self):
         d = self.__dict__.copy()
-        if "neural_net" in d.keys():
-            d["neural_net_params"] = self.neural_net.state_dict()
+        if hasattr(self, "neural_net"):
+            state_dict = self.neural_net.state_dict()
+            d["neural_net_params"] = state_dict
             del(d["neural_net"])
+        if hasattr(self, "phi_grid"):
+            del(d["phi_grid"])
 
         return d
 

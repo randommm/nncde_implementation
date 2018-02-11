@@ -24,8 +24,9 @@ from sklearn.externals import joblib
 class _FourierSeries:
     def __init__(self):
         self._fourier_component = self._base_fourier_component
+        self._fourier_component_nocache = self._base_fourier_component
 
-    def __call__(self, x, ncomponents):
+    def __call__(self, x, ncomponents, nocache=False):
         """Calculate Fourier Series Expansion.
 
         Parameters
@@ -44,8 +45,12 @@ class _FourierSeries:
         results = np.array(np.empty((x.size, ncomponents)),
                            dtype=np.float32, order='F')
 
+        if not nocache:
+            _fourier_component = self._fourier_component
+        else:
+            _fourier_component = self._fourier_component_nocache
         for j in range(ncomponents):
-            results[:, j] = self._fourier_component(x, j)
+            results[:, j] = _fourier_component(x, j)
 
         results = np.array(results, dtype=np.float32, order='C')
 
