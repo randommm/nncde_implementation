@@ -33,7 +33,7 @@ set_cache_dir("nn_flexcode_fs_cache", bytes_limit=30*2**30)
 #Comment for non-deterministic results
 np.random.seed(10)
 
-n_train = 900
+n_train = 100_000
 n_test = 800
 x_dim = 45
 ncomponents = 500
@@ -72,18 +72,20 @@ verbose=2,
 beta_loss_penal_exp=0.4,
 beta_loss_penal_base=0.3,
 nn_weights_loss_penal=0.1,
+divide_batch_max_size_by_nlayers=True,
+batch_max_size=40000
 )
 
-nnf_obj.fit(x_train, y_train)
-#nnf_obj.move_to_cpu()
-print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
-print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
+#nnf_obj.fit(x_train, y_train)
+##nnf_obj.move_to_cpu()
+#print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
+#print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
 
-est_pdf = nnf_obj.predict([x_test, y_test])
-true_pdf = true_pdf_calc(x_test, y_test)
-sq_errors = (est_pdf - true_pdf)**2
-print("Squared density errors for test:\n", sq_errors)
-print("\nAverage squared density errors for test:\n", sq_errors.mean())
+#est_pdf = nnf_obj.predict([x_test, y_test])
+#true_pdf = true_pdf_calc(x_test, y_test)
+#sq_errors = (est_pdf - true_pdf)**2
+#print("Squared density errors for test:\n", sq_errors)
+#print("\nAverage squared density errors for test:\n", sq_errors.mean())
 
 #gs_params = dict(
 #ncomponents = np.arange(500, 10, -10),
@@ -98,6 +100,7 @@ beta_loss_penal_exp = stats.truncnorm(a=-1.1, b=np.inf, scale=0.5,
                                       loc=1.1),
 beta_loss_penal_base = stats.truncnorm(a=0, b=np.inf, scale=0.5),
 nn_weights_loss_penal = stats.truncnorm(a=0, b=np.inf, scale=2.0),
+nhlayers = stats.nbinom(n=1.25, p=1/9),
 )
 
 h = hashlib.new('ripemd160')

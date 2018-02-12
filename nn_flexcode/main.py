@@ -33,18 +33,21 @@ class NNFlexCode(BaseEstimator):
                  beta_loss_penal_exp=0,
                  beta_loss_penal_base=0,
                  nn_weights_loss_penal=0,
+                 nhlayers=5,
 
                  nepoch=100,
 
                  batch_initial=100,
                  batch_step_multiplier=5.0,
                  batch_step_epoch_expon=20.0,
-                 batch_max_size=10000,
+                 batch_max_size=20000,
 
                  lr_initial=1,
                  lr_step_multiplier=0.0001,
                  lr_step_epoch_expon=3.0,
                  lr_min_size=1e-30,
+
+                 divide_batch_max_size_by_nlayers=False,
 
                  grid_size=10000,
                  gpu=True,
@@ -55,10 +58,15 @@ class NNFlexCode(BaseEstimator):
             if prop != "self":
                 setattr(self, prop, locals()[prop])
 
+    def fit(self, x_train, y_train):
         self.gpu = self.gpu and torch.cuda.is_available()
 
+        if self.divide_batch_max_size_by_nlayers:
+            self.batch_max_size_c = self.batch_max_size // (
+                                         self.nhlayers + 1)
+        else:
+            self.batch_max_size_c = self.batch_max_size
 
-    def fit(self, x_train, y_train):
         self.ncomponents = int(self.ncomponents)
         max_penal = self.ncomponents ** self.beta_loss_penal_exp
         if max_penal > 1e4:
@@ -119,7 +127,7 @@ class NNFlexCode(BaseEstimator):
         assert(self.batch_initial >= 1)
         assert(self.batch_step_multiplier > 0)
         assert(self.batch_step_epoch_expon > 0)
-        assert(self.batch_max_size >= 1)
+        assert(self.batch_max_size_c >= 1)
 
         assert(self.lr_initial > 0)
         assert(self.lr_step_multiplier > 0)
@@ -130,10 +138,12 @@ class NNFlexCode(BaseEstimator):
         assert(self.beta_loss_penal_base >= 0)
         assert(self.nn_weights_loss_penal >= 0)
 
+        assert(self.nhlayers >= 0)
+
         inputv = _np_to_var(x_train)
         target = _np_to_var(fourierseries(y_train, self.ncomponents))
 
-        batch_max_size = min(self.batch_max_size, x_train.shape[0])
+        batch_max_size = min(self.batch_max_size_c, x_train.shape[0])
 
         start_time = time.process_time()
 
@@ -236,7 +246,7 @@ class NNFlexCode(BaseEstimator):
             inputv = Variable(inputv.data.pin_memory(), volatile=True)
             target = Variable(target.data.pin_memory(), volatile=True)
 
-        batch_size = min(self.batch_max_size, x_test.shape[0])
+        batch_size = min(self.batch_max_size_c, x_test.shape[0])
 
         loss_vals = []
         batch_sizes = []
@@ -319,22 +329,27 @@ class NNFlexCode(BaseEstimator):
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
-            def __init__(self, x_dim, ncomponents):
+            def __init__(self, x_dim, ncomponents, nhlayers):
                 super(NeuralNet, self).__init__()
-                self.fc1 = nn.Linear(x_dim, ncomponents)
-                self.fc2 = nn.Linear(ncomponents, ncomponents)
-                self.fc3 = nn.Linear(ncomponents, ncomponents)
-                self.fc4 = nn.Linear(ncomponents, ncomponents)
-                self.fc5 = nn.Linear(ncomponents, ncomponents)
+
+                input_layer_size = x_dim
+                for i in range(nhlayers):
+                    self.__setattr__("fc_" + str(i),
+                            nn.Linear(input_layer_size, ncomponents))
+                    input_layer_size = ncomponents
+
+                self.fc_last = nn.Linear(input_layer_size, ncomponents)
+
+                self.nhlayers = nhlayers
 
             def forward(self, x):
-                x = F.relu(self.fc1(x))
-                x = F.relu(self.fc2(x))
-                x = F.relu(self.fc3(x))
-                x = F.relu(self.fc4(x))
-                x = self.fc5(x)
+                for i in range(self.nhlayers):
+                    fc = self.__getattr__("fc_" + str(i))
+                    x = F.relu(fc(x))
+                x = self.fc_last(x)
                 return x
-        self.neural_net = NeuralNet(self.x_dim, self.ncomponents)
+        self.neural_net = NeuralNet(self.x_dim, self.ncomponents,
+                                    self.nhlayers)
 
     def __getstate__(self):
         d = self.__dict__.copy()
