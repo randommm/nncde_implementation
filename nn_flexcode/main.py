@@ -35,17 +35,12 @@ class NNFlexCode(BaseEstimator):
                  nn_weights_loss_penal=0,
                  nhlayers=5,
 
-                 nepoch=100,
+                 nepoch=200,
 
                  batch_initial=100,
                  batch_step_multiplier=5.0,
                  batch_step_epoch_expon=20.0,
                  batch_max_size=20000,
-
-                 lr_initial=1,
-                 lr_step_multiplier=0.0001,
-                 lr_step_epoch_expon=3.0,
-                 lr_min_size=1e-30,
 
                  divide_batch_max_size_by_nlayers=False,
 
@@ -77,25 +72,6 @@ class NNFlexCode(BaseEstimator):
                   "to avoid having the model blow up.")
             self.beta_loss_penal_exp = new_val
 
-        n_attempts = 0
-        while True:
-            try:
-                return self._try_fit(x_train, y_train)
-            except RuntimeError as err:
-                print("Warning: RuntimeError with message:", err)
-                if n_attempts >= 100:
-                    raise RuntimeError("Gave up after 100 attempts")
-                elif n_attempts >= 4:
-                    self.lr_initial *= .5
-                    print("Cutting lr_initial by half and retrying")
-                else:
-                    print("Retrying")
-                self._construct_neural_net()
-                if self.gpu:
-                    self.move_to_gpu()
-                n_attempts += 1
-
-    def _try_fit(self, x_train, y_train):
         self.x_dim = x_train.shape[1]
         self._construct_neural_net()
         self.epoch_count = 0
@@ -129,11 +105,6 @@ class NNFlexCode(BaseEstimator):
         assert(self.batch_step_epoch_expon > 0)
         assert(self.batch_max_size_c >= 1)
 
-        assert(self.lr_initial > 0)
-        assert(self.lr_step_multiplier > 0)
-        assert(self.lr_step_epoch_expon > 0)
-        assert(self.lr_min_size >= 0)
-
         assert(self.beta_loss_penal_exp >= 0)
         assert(self.beta_loss_penal_base >= 0)
         assert(self.nn_weights_loss_penal >= 0)
@@ -149,17 +120,12 @@ class NNFlexCode(BaseEstimator):
 
         loss_vals = []
         batch_sizes = []
+        optimizer = optim.Adadelta(self.neural_net.parameters())
         for _ in range(nepoch):
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
                 self.batch_step_multiplier *
                 self.epoch_count**self.batch_step_epoch_expon))
-            lr_val = max(self.lr_min_size,
-                self.lr_initial /
-                (1 + self.lr_step_multiplier
-                 * self.epoch_count**self.lr_step_epoch_expon))
-            optimizer = optim.SGD(self.neural_net.parameters(),
-                                  lr=lr_val)
             permutation = torch.randperm(target.shape[0])
 
             inputv_perm = inputv.data[permutation]
