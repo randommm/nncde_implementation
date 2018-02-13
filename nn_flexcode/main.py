@@ -38,11 +38,11 @@ class NNFlexCode(BaseEstimator):
                  nepoch=200,
 
                  batch_initial=100,
-                 batch_step_multiplier=5.0,
-                 batch_step_epoch_expon=20.0,
-                 batch_max_size=20000,
+                 batch_step_multiplier=1.1,
+                 batch_step_epoch_expon=2.5,
+                 batch_max_size=5000,
 
-                 divide_batch_max_size_by_nlayers=False,
+                 #divide_batch_max_size_by_nlayers=False,
 
                  grid_size=10000,
                  gpu=True,
@@ -56,11 +56,11 @@ class NNFlexCode(BaseEstimator):
     def fit(self, x_train, y_train):
         self.gpu = self.gpu and torch.cuda.is_available()
 
-        if self.divide_batch_max_size_by_nlayers:
-            self.batch_max_size_c = self.batch_max_size // (
-                                         self.nhlayers + 1)
-        else:
-            self.batch_max_size_c = self.batch_max_size
+        #if self.divide_batch_max_size_by_nlayers:
+        #    self.batch_max_size_c = self.batch_max_size // (
+        #                                 self.nhlayers + 1)
+        #else:
+        #    self.batch_max_size_c = self.batch_max_size
 
         self.ncomponents = int(self.ncomponents)
         max_penal = self.ncomponents ** self.beta_loss_penal_exp
@@ -103,7 +103,7 @@ class NNFlexCode(BaseEstimator):
         assert(self.batch_initial >= 1)
         assert(self.batch_step_multiplier > 0)
         assert(self.batch_step_epoch_expon > 0)
-        assert(self.batch_max_size_c >= 1)
+        assert(self.batch_max_size >= 1)
 
         assert(self.beta_loss_penal_exp >= 0)
         assert(self.beta_loss_penal_base >= 0)
@@ -114,7 +114,7 @@ class NNFlexCode(BaseEstimator):
         inputv = _np_to_var(x_train)
         target = _np_to_var(fourierseries(y_train, self.ncomponents))
 
-        batch_max_size = min(self.batch_max_size_c, x_train.shape[0])
+        batch_max_size = min(self.batch_max_size, x_train.shape[0])
 
         start_time = time.process_time()
 
@@ -193,8 +193,9 @@ class NNFlexCode(BaseEstimator):
                 target_this = target_next
             if self.verbose >= 2:
                 avgloss = np.average(loss_vals, weights=batch_sizes)
-                print("Epoch", self.epoch_count, "done, train loss",
-                      avgloss, flush=True)
+                print("Finished epoch", self.epoch_count,
+                      "with batch size", batch_size,
+                      "and train loss", avgloss, flush=True)
             self.epoch_count += 1
 
         elapsed_time = time.process_time() - start_time
@@ -212,7 +213,7 @@ class NNFlexCode(BaseEstimator):
             inputv = Variable(inputv.data.pin_memory(), volatile=True)
             target = Variable(target.data.pin_memory(), volatile=True)
 
-        batch_size = min(self.batch_max_size_c, x_test.shape[0])
+        batch_size = min(self.batch_max_size, x_test.shape[0])
 
         loss_vals = []
         batch_sizes = []

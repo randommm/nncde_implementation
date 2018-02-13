@@ -21,7 +21,7 @@ import numpy as np
 import scipy.stats as stats
 
 from nn_flexcode import NNFlexCode, set_cache_dir
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import RandomizedSearchCV, ShuffleSplit
 
 import hashlib
 import pickle
@@ -72,27 +72,18 @@ verbose=2,
 beta_loss_penal_exp=0.4,
 beta_loss_penal_base=0.3,
 nn_weights_loss_penal=0.1,
-divide_batch_max_size_by_nlayers=True,
-batch_max_size=40000
+nhlayers=10
 )
 
-#nnf_obj.fit(x_train, y_train)
-##nnf_obj.move_to_cpu()
-#print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
-#print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
+nnf_obj.fit(x_train, y_train)
+print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
+print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
 
-#est_pdf = nnf_obj.predict([x_test, y_test])
-#true_pdf = true_pdf_calc(x_test, y_test)
-#sq_errors = (est_pdf - true_pdf)**2
-#print("Squared density errors for test:\n", sq_errors)
-#print("\nAverage squared density errors for test:\n", sq_errors.mean())
-
-#gs_params = dict(
-#ncomponents = np.arange(500, 10, -10),
-#beta_loss_penal_exp = np.arange(0, 2, .1),
-#beta_loss_penal_base = np.arange(0, 2, .1),
-#nn_weights_loss_penal = np.arange(0, 2, .1),
-#)
+est_pdf = nnf_obj.predict([x_test, y_test])
+true_pdf = true_pdf_calc(x_test, y_test)
+sq_errors = (est_pdf - true_pdf)**2
+print("Squared density errors for test:\n", sq_errors)
+print("\nAverage squared density errors for test:\n", sq_errors.mean())
 
 gs_params = dict(
 ncomponents = np.arange(500, 10, -10),
@@ -108,12 +99,14 @@ h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))
 i = 0
 gs_clf_list = []
+cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 for i in range(10):
     filename = ("nn_flexcode_fs_cache/model_" + h.hexdigest() + "_"
                 + str(i) + ".pkl")
     if not os.path.isfile(filename):
         print("Started working on file", filename)
-        gs_clf = RandomizedSearchCV(nnf_obj, gs_params, n_iter=10)
+        gs_clf = RandomizedSearchCV(nnf_obj, gs_params, n_iter=10,
+                                    cv=cv)
         gs_clf.fit(x_train, y_train)
 
         joblib.dump(gs_clf, filename)
