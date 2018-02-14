@@ -21,14 +21,14 @@ try:
 except ImportError:
     from distutils.core import setup
 
-setup(name='nn_flexcode',
+setup(name='nnflexcode',
       version='0.0.1',
       description='Nonparametric methods for density estimation and '
                   'comparison',
       author='Marco Inacio',
       author_email='pythonpackages@marcoinacio.com',
       url='http://nnflexcode.marcoinacio.com/',
-      packages=['nn_flexcode'],
+      packages=['nnflexcode'],
       keywords = ['neural networks', 'flexcode', 'nonparametric',
                   'density estimation'],
       license='GPL3',

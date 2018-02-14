@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nn_flexcode import NNFlexCode, set_cache_dir
+from nnflexcode import NNFlexCode, set_cache_dir
 from sklearn.model_selection import RandomizedSearchCV, ShuffleSplit
 
 import hashlib
@@ -28,7 +28,7 @@ import pickle
 from sklearn.externals import joblib
 import os
 
-set_cache_dir("nn_flexcode_fs_cache", bytes_limit=30*2**30)
+set_cache_dir("nnflexcode_fs_cache", bytes_limit=30*2**30)
 
 #Comment for non-deterministic results
 np.random.seed(10)
@@ -69,12 +69,14 @@ def true_pdf_calc(x_pred, y_pred):
 nnf_obj = NNFlexCode(
 ncomponents=ncomponents,
 verbose=2,
-beta_loss_penal_exp=0.4,
-beta_loss_penal_base=0.3,
-nn_weights_loss_penal=0.1,
-nhlayers=10
+#beta_loss_penal_exp=0.4,
+#beta_loss_penal_base=0.3,
+#nn_weights_loss_penal=0.1,
+nhlayers=10,
+es=True,
 )
 
+"""
 nnf_obj.fit(x_train, y_train)
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
 print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
@@ -84,6 +86,7 @@ true_pdf = true_pdf_calc(x_test, y_test)
 sq_errors = (est_pdf - true_pdf)**2
 print("Squared density errors for test:\n", sq_errors)
 print("\nAverage squared density errors for test:\n", sq_errors.mean())
+"""
 
 gs_params = dict(
 ncomponents = np.arange(500, 10, -10),
@@ -101,12 +104,12 @@ i = 0
 gs_clf_list = []
 cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 for i in range(10):
-    filename = ("nn_flexcode_fs_cache/model_" + h.hexdigest() + "_"
+    filename = ("nnflexcode_fs_cache/model_" + h.hexdigest() + "_"
                 + str(i) + ".pkl")
     if not os.path.isfile(filename):
         print("Started working on file", filename)
         gs_clf = RandomizedSearchCV(nnf_obj, gs_params, n_iter=10,
-                                    cv=cv)
+                                    cv=cv, verbose=100)
         gs_clf.fit(x_train, y_train)
 
         joblib.dump(gs_clf, filename)

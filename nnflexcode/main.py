@@ -23,7 +23,9 @@ import torch.optim as optim
 
 import numpy as np
 import time
+import itertools
 from sklearn.base import BaseEstimator
+from sklearn.model_selection import ShuffleSplit
 
 from .utils import fourierseries, _np_to_var, cache_data
 
@@ -35,14 +37,18 @@ class NNFlexCode(BaseEstimator):
                  nn_weights_loss_penal=0,
                  nhlayers=5,
 
+                 es = False,
+                 es_validation_set = 0.1,
+                 es_give_up_after_nepochs = 15,
+                 es_splitter_random_state = 0,
+
                  nepoch=200,
 
                  batch_initial=100,
                  batch_step_multiplier=1.1,
                  batch_step_epoch_expon=2.5,
-                 batch_max_size=5000,
+                 batch_max_size=3000,
 
-                 #divide_batch_max_size_by_nlayers=False,
 
                  grid_size=10000,
                  gpu=True,
@@ -111,91 +117,69 @@ class NNFlexCode(BaseEstimator):
 
         assert(self.nhlayers >= 0)
 
-        inputv = _np_to_var(x_train)
-        target = _np_to_var(fourierseries(y_train, self.ncomponents))
+        inputv_train = np.array(x_train, dtype='f4')
+        target_train = np.array(fourierseries(y_train,
+            self.ncomponents), dtype='f4')
+
+        range_epoch = range(nepoch)
+        if self.es:
+            splitter = ShuffleSplit(n_splits=1,
+                test_size=self.es_validation_set,
+                random_state=self.es_splitter_random_state)
+            index_train, index_val = next(iter(splitter.split(x_train,
+                y_train)))
+
+            inputv_val = inputv_train[index_val]
+            target_val = target_train[index_val]
+            inputv_val = np.ascontiguousarray(inputv_train)
+            target_val = np.ascontiguousarray(target_train)
+
+            inputv_train = inputv_train[index_train]
+            target_train = target_train[index_train]
+            inputv_train = np.ascontiguousarray(inputv_train)
+            target_train = np.ascontiguousarray(target_train)
+
+            self.best_loss_val = np.infty
+            es_tries = 0
+            range_epoch = itertools.count() # infty iterator
+
 
         batch_max_size = min(self.batch_max_size, x_train.shape[0])
 
         start_time = time.process_time()
 
-        loss_vals = []
-        batch_sizes = []
         optimizer = optim.Adadelta(self.neural_net.parameters())
-        for _ in range(nepoch):
+        for _ in range_epoch:
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
                 self.batch_step_multiplier *
-                self.epoch_count**self.batch_step_epoch_expon))
-            permutation = torch.randperm(target.shape[0])
+                self.epoch_count ** self.batch_step_epoch_expon))
 
-            inputv_perm = inputv.data[permutation]
-            target_perm = target.data[permutation]
-            if self.gpu:
-                inputv_perm = inputv_perm.pin_memory()
-                target_perm = target_perm.pin_memory()
-            inputv_perm = Variable(inputv_perm)
-            target_perm = Variable(target_perm)
+            permutation = np.random.permutation(target_train.shape[0])
+            inputv_train = torch.from_numpy(inputv_train[permutation])
+            target_train = torch.from_numpy(target_train[permutation])
+            inputv_train = np.ascontiguousarray(inputv_train)
+            target_train = np.ascontiguousarray(target_train)
 
-            for i in range(0, target.shape[0] + batch_size, batch_size):
-                if i < target.shape[0]:
-                    inputv_next = inputv_perm[i:i+batch_size]
-                    target_next = target_perm[i:i+batch_size]
+            self._one_batch("train", batch_size, inputv_train,
+                target_train, optimizer, criterion, volatile=False)
+            if self.es:
+                avloss = self._one_batch("test", batch_max_size,
+                    inputv_val, target_val, optimizer, criterion,
+                    volatile=True)
+                if avloss <= self.best_loss_val:
+                    self.best_loss_val = avloss
+                    best_state_dict = self.neural_net.state_dict()
+                    es_tries = 0
+                else:
+                    es_tries += 1
+                if es_tries >= self.es_give_up_after_nepochs:
+                    self.neural_net.load_state_dict(best_state_dict)
+                    if self.verbose >= 1:
+                        print("Validation loss did not improve after",
+                              self.es_give_up_after_nepochs, "tries.")
+                    break
 
-                    if self.gpu:
-                        inputv_next = inputv_next.cuda(async=True)
-                        target_next = target_next.cuda(async=True)
-
-                if i != 0:
-                    optimizer.zero_grad()
-                    output = self.neural_net(inputv_this)
-
-                    # Main loss
-                    loss = criterion(output, target_this)
-
-                    # Penalize on betas
-                    if self.beta_loss_penal_base != 0:
-                        penal = output ** 2
-                        if self.beta_loss_penal_exp != 0:
-                            aranged = Variable(
-                                loss.data.new(
-                                    range(1, self.ncomponents + 1))
-                                ** self.beta_loss_penal_exp
-                                )
-                            penal = penal * aranged
-                        penal = penal.mean()
-                        penal = penal * self.beta_loss_penal_base
-                        loss += penal
-
-                    # Penalize on nn weights
-                    if self.nn_weights_loss_penal != 0:
-                        penal = self.neural_net.parameters()
-                        penal = map(lambda x: (x**2).sum(), penal)
-                        penal = Variable.cat(tuple(penal)).sum()
-                        loss += penal * self.nn_weights_loss_penal
-
-                    # Correction for last batch as it might be smaller
-                    this_batch_size = inputv_this.shape[0]
-                    if (batch_size > inputv_this.shape[0]):
-                        loss *= this_batch_size / batch_size
-
-                    np_loss = loss.data.cpu().numpy()[0]
-                    if np.isnan(np_loss):
-                        raise RuntimeError("Loss is NaN")
-
-                    if self.verbose >= 2:
-                        loss_vals.append(np_loss)
-                        batch_sizes.append(this_batch_size)
-
-                    loss.backward()
-                    optimizer.step()
-
-                inputv_this = inputv_next
-                target_this = target_next
-            if self.verbose >= 2:
-                avgloss = np.average(loss_vals, weights=batch_sizes)
-                print("Finished epoch", self.epoch_count,
-                      "with batch size", batch_size,
-                      "and train loss", avgloss, flush=True)
             self.epoch_count += 1
 
         elapsed_time = time.process_time() - start_time
@@ -203,6 +187,86 @@ class NNFlexCode(BaseEstimator):
             print("Elapsed time:", elapsed_time, flush=True)
 
         return self
+
+    def _one_batch(self, ftype, batch_size, inputv, target, optimizer,
+                   criterion, volatile):
+
+        inputv = torch.from_numpy(inputv)
+        target = torch.from_numpy(target)
+        if self.gpu:
+            inputv = inputv.pin_memory()
+            target = target.pin_memory()
+        inputv = Variable(inputv, volatile=volatile)
+        target = Variable(target, volatile=volatile)
+
+        loss_vals = []
+        batch_sizes = []
+        for i in range(0, target.shape[0] + batch_size, batch_size):
+            if i < target.shape[0]:
+                inputv_next = inputv[i:i+batch_size]
+                target_next = target[i:i+batch_size]
+
+                if self.gpu:
+                    inputv_next = inputv_next.cuda(async=True)
+                    target_next = target_next.cuda(async=True)
+
+            if i != 0:
+                optimizer.zero_grad()
+                output = self.neural_net(inputv_this)
+
+                # Main loss
+                loss = criterion(output, target_this)
+
+                # Penalize on betas
+                if self.beta_loss_penal_base != 0 and ftype == "train":
+                    penal = output ** 2
+                    if self.beta_loss_penal_exp != 0:
+                        aranged = Variable(
+                            loss.data.new(
+                                range(1, self.ncomponents + 1))
+                            ** self.beta_loss_penal_exp
+                            )
+                        penal = penal * aranged
+                    penal = penal.mean()
+                    penal = penal * self.beta_loss_penal_base
+                    loss += penal
+
+                # Penalize on nn weights
+                if self.nn_weights_loss_penal != 0 and ftype == "train":
+                    penal = self.neural_net.parameters()
+                    penal = map(lambda x: (x**2).sum(), penal)
+                    penal = Variable.cat(tuple(penal)).sum()
+                    loss += penal * self.nn_weights_loss_penal
+
+                # Correction for last batch as it might be smaller
+                batch_actual_size = inputv_this.shape[0]
+                if batch_actual_size != batch_size:
+                    loss *= batch_actual_size / batch_size
+
+                np_loss = loss.data.cpu().numpy()[0]
+                if np.isnan(np_loss):
+                    raise RuntimeError("Loss is NaN")
+
+                loss_vals.append(np_loss)
+                batch_sizes.append(batch_actual_size)
+
+                if ftype == "train":
+                    loss.backward()
+                    optimizer.step()
+
+            inputv_this = inputv_next
+            target_this = target_next
+
+        avgloss = np.average(loss_vals, weights=batch_sizes)
+        if self.verbose >= 2:
+            print("Finished epoch", self.epoch_count,
+                  "with batch size", batch_size,
+                  "and", ftype,
+                  ("pseudo-" if ftype == "train" else "") + "loss",
+                  avgloss, flush=True)
+
+        return avgloss
+
 
     def score(self, x_test, y_test):
         inputv = _np_to_var(x_test, volatile=True)
