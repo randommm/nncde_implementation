@@ -39,7 +39,7 @@ class NNFlexCode(BaseEstimator):
 
                  es = False,
                  es_validation_set = 0.1,
-                 es_give_up_after_nepochs = 15,
+                 es_give_up_after_nepochs = 20,
                  es_splitter_random_state = 0,
 
                  nepoch=200,
@@ -171,6 +171,9 @@ class NNFlexCode(BaseEstimator):
                     self.best_loss_val = avloss
                     best_state_dict = self.neural_net.state_dict()
                     es_tries = 0
+                    if self.verbose >= 2:
+                        print("This is the lowest validation loss",
+                              "so far.")
                 else:
                     es_tries += 1
                 if es_tries >= self.es_give_up_after_nepochs:
