@@ -30,12 +30,66 @@ from sklearn.model_selection import ShuffleSplit
 from .utils import fourierseries, _np_to_var, cache_data
 
 class NNFlexCode(BaseEstimator):
+    """
+    Estimate univariate density using Bayesian Fourier Series.
+    This method only works with data the lives in
+    [0, 1], however, the class implements methods to automatically
+    transform user inputted data to [0, 1]. See parameter `transform`
+    below.
+
+    Parameters
+    ----------
+    ncomponents : integer
+        Maximum number of components of the Fourier series
+        expansion.
+
+    beta_loss_penal_exp : integer
+        Exponential term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+    beta_loss_penal_base : integer
+        Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+    nn_weights_loss_penal : integer
+        Mulplier for penalizaing the size of neural network weights. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+
+    nhlayers : integer
+        Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
+    hls_multiplier : integer
+        Multiplier for the size of the hidden layers of the neural network. If set to 1, then each of them will have ncomponents components. If set to 2, then 2 * ncomponents components, and so on.
+
+    es : bool
+        If true, then will split the training set into training and validation and calculate the validation internally on each epoch and check if the validation loss increases or not.
+    es_validation_set : float
+        Size of the validation set if es == True.
+    es_give_up_after_nepochs : float
+        Amount of epochs to try to decrease the validation loss before giving up and stoping training.
+    es_splitter_random_state : float
+        Random state to split the dataset into training and validation.
+
+    nepoch : integer
+        Number of epochs to run. Ignored if es == True.
+
+    batch_initial : integer
+        Initial batch size.
+    batch_step_multiplier : float
+        See batch_inital.
+    batch_step_epoch_expon : float
+        See batch_inital.
+    batch_max_size : float
+        See batch_inital.
+
+    grid_size : integer
+        Set grid size for calculating utility on score method.
+    gpu : bool
+        If true, will use gpu for computation, if available.
+    verbose : integer
+        Level verbosity. Set to 0 for silent mode.
+    """
     def __init__(self,
                  ncomponents=100,
                  beta_loss_penal_exp=0,
                  beta_loss_penal_base=0,
                  nn_weights_loss_penal=0,
-                 nhlayers=5,
+                 nhlayers=3,
+                 hls_multiplier=5,
 
                  es = False,
                  es_validation_set = 0.1,
@@ -45,10 +99,9 @@ class NNFlexCode(BaseEstimator):
                  nepoch=200,
 
                  batch_initial=100,
-                 batch_step_multiplier=1.1,
-                 batch_step_epoch_expon=2.5,
-                 batch_max_size=3000,
-
+                 batch_step_multiplier=1.3,
+                 batch_step_epoch_expon=2.0,
+                 batch_max_size=1000,
 
                  grid_size=10000,
                  gpu=True,
@@ -116,6 +169,7 @@ class NNFlexCode(BaseEstimator):
         assert(self.nn_weights_loss_penal >= 0)
 
         assert(self.nhlayers >= 0)
+        assert(self.hls_multiplier > 0)
 
         inputv_train = np.array(x_train, dtype='f4')
         target_train = np.array(fourierseries(y_train,
@@ -161,9 +215,11 @@ class NNFlexCode(BaseEstimator):
             inputv_train = np.ascontiguousarray(inputv_train)
             target_train = np.ascontiguousarray(target_train)
 
+            self.neural_net.train()
             self._one_batch("train", batch_size, inputv_train,
                 target_train, optimizer, criterion, volatile=False)
             if self.es:
+                self.neural_net.eval()
                 avloss = self._one_batch("test", batch_max_size,
                     inputv_val, target_val, optimizer, criterion,
                     volatile=True)
@@ -219,6 +275,18 @@ class NNFlexCode(BaseEstimator):
 
                 # Main loss
                 loss = criterion(output, target_this)
+                #loss1 = -2 * (output * target_this).sum(1)
+                #loss1 = loss1.mean()
+                #self._create_phi_grid()
+
+                #loss2 = Variable.mm(output, self.phi_grid)**2
+                #loss2 = loss2.mean()
+
+                #loss = loss1 + loss2
+
+                #loss = (output * target_this).sum(1) + 1
+                #loss = F.softplus(loss, 1e5, 2000000)
+                #loss = - loss.log().mean()
 
                 # Penalize on betas
                 if self.beta_loss_penal_base != 0 and ftype == "train":
@@ -270,7 +338,6 @@ class NNFlexCode(BaseEstimator):
 
         return avgloss
 
-
     def score(self, x_test, y_test):
         inputv = _np_to_var(x_test, volatile=True)
         target = _np_to_var(fourierseries(y_test, self.ncomponents),
@@ -314,9 +381,9 @@ class NNFlexCode(BaseEstimator):
                     #self.grid_size = grid_size
                     #print("for grid_size", self.grid_size)
                     #if not hasattr(self, "phi_grid"):
-                        #z_grid = np.linspace(0, 1, self.grid_size,
+                        #self.y_grid = np.linspace(0, 1, self.grid_size,
                                              #dtype=np.float32)
-                        #self.phi_grid = np.array(fourierseries(z_grid,
+                        #self.phi_grid = np.array(fourierseries(self.y_grid,
                                                  #self.ncomponents).T)
                         #self.phi_grid = _np_to_var(self.phi_grid)
                         #if self.gpu:
@@ -327,16 +394,9 @@ class NNFlexCode(BaseEstimator):
                     #del(self.phi_grid)
                     #print(loss2)
 
-                if not hasattr(self, "phi_grid"):
-                    z_grid = np.linspace(0, 1, self.grid_size,
-                                         dtype=np.float32)
-                    self.phi_grid = np.array(fourierseries(z_grid,
-                                             self.ncomponents).T)
-                    self.phi_grid = _np_to_var(self.phi_grid)
-                    if self.gpu:
-                        self.phi_grid = self.phi_grid.cuda()
+                self._create_phi_grid()
 
-                loss2 = (Variable.mm(output, self.phi_grid).sum(1)**2)
+                loss2 = Variable.mm(output, self.phi_grid)**2
                 loss2 = loss2.mean()
 
                 loss = loss1 + loss2
@@ -348,51 +408,87 @@ class NNFlexCode(BaseEstimator):
 
         return -1 * np.average(loss_vals, weights=batch_sizes)
 
-    def predict(self, x_pred_and_y_pred_list):
-        x_pred, y_pred = x_pred_and_y_pred_list
+    def predict(self, x_pred, y_pred=None):
         inputv = _np_to_var(x_pred, volatile=True)
-        target = _np_to_var(fourierseries(y_pred, self.ncomponents),
-                            volatile=True)
+        if y_pred is None:
+            self._create_phi_grid()
+            target = self.phi_grid
+        else:
+            target = _np_to_var(fourierseries(y_pred,
+                                               self.ncomponents),
+                                 volatile=True)
         if self.gpu:
             inputv = inputv.cuda()
             target = target.cuda()
         x_output_pred = self.neural_net(inputv)
-        output_pred = self.neural_net(inputv) * target
-        output_pred = output_pred.sum(1) + 1
+        if y_pred is None:
+            output_pred = Variable.mm(self.neural_net(inputv), target)
+        else:
+            output_pred = self.neural_net(inputv) * target
+            output_pred = output_pred.sum(1)
+        output_pred += 1
         return output_pred.data.cpu().numpy()
+
+    def change_grid_size(self, new_grid_size):
+        self.grid_size = new_grid_size
+        if hasattr(self, "phi_grid"):
+            del(self.phi_grid)
+            del(self.y_grid)
+            self._create_phi_grid()
+
+    def _create_phi_grid(self):
+        if not hasattr(self, "phi_grid"):
+            self.y_grid = np.linspace(0, 1, self.grid_size,
+                                 dtype=np.float32)
+            self.phi_grid = np.array(fourierseries(self.y_grid,
+                                     self.ncomponents).T)
+            self.phi_grid = _np_to_var(self.phi_grid)
+            if self.gpu:
+                self.phi_grid = self.phi_grid.cuda()
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
-            def __init__(self, x_dim, ncomponents, nhlayers):
+            def __init__(self, x_dim, ncomponents, nhlayers,
+                         hls_multiplier):
                 super(NeuralNet, self).__init__()
 
-                input_layer_size = x_dim
+                next_input_l_size = x_dim
+                output_hl_size = int(ncomponents * hls_multiplier)
+                self.m = nn.Dropout(p=0.2)
+
                 for i in range(nhlayers):
                     self.__setattr__("fc_" + str(i),
-                            nn.Linear(input_layer_size, ncomponents))
-                    input_layer_size = ncomponents
+                        nn.Linear(next_input_l_size, output_hl_size))
+                    next_input_l_size = output_hl_size
 
-                self.fc_last = nn.Linear(input_layer_size, ncomponents)
+                self.fc_last = nn.Linear(next_input_l_size, ncomponents)
 
                 self.nhlayers = nhlayers
 
             def forward(self, x):
                 for i in range(self.nhlayers):
                     fc = self.__getattr__("fc_" + str(i))
-                    x = F.relu(fc(x))
+                    x = F.elu(fc(x))
+                    #if self.training:
+                    #    self.m(x)
                 x = self.fc_last(x)
                 return x
         self.neural_net = NeuralNet(self.x_dim, self.ncomponents,
-                                    self.nhlayers)
+                                    self.nhlayers, self.hls_multiplier)
 
     def __getstate__(self):
         d = self.__dict__.copy()
         if hasattr(self, "neural_net"):
             state_dict = self.neural_net.state_dict()
+            for k in state_dict:
+                state_dict[k] = state_dict[k].cpu()
             d["neural_net_params"] = state_dict
             del(d["neural_net"])
+
+        #Delete phi_grid (will recreate on load)
         if hasattr(self, "phi_grid"):
             del(d["phi_grid"])
+            d["y_grid"] = None
 
         return d
 
@@ -405,6 +501,11 @@ class NNFlexCode(BaseEstimator):
             del(self.neural_net_params)
             if self.gpu:
                 self.move_to_gpu()
+
+        #Recreate phi_grid
+        if "y_grid" in d.keys():
+            del(self.y_grid)
+            self._create_phi_grid()
 
 class NNFlexCodeCached(NNFlexCode):
     def fit(self, x_train, y_train):

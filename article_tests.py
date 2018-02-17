@@ -36,7 +36,7 @@ np.random.seed(10)
 n_train = 100_000
 n_test = 800
 x_dim = 50
-ncomponents = 400
+ncomponents = 50
 
 beta_mu = stats.norm.rvs(size=x_dim, scale=0.01)
 beta_sigma = stats.norm.rvs(size=x_dim, scale=0.01)
@@ -52,7 +52,7 @@ def func_mu(x):
         x_transf[i+2] = x[i]*x[i+2]
         x_transf[i+4] = np.sqrt(np.abs(x[i+4]))
         x_transf[i+5] = x[i+5] * np.sin(x[i])
-    return np.dot(beta_mu, x)
+    return np.dot(beta_mu, x_transf)
 
 def func_sigma(x):
     return np.abs(np.dot(beta_sigma, x))
@@ -77,7 +77,7 @@ def generate_data(n_gen):
     y_gen = mu_gen + y_gen * (sigma_gen + beta0_sigma)
     y_gen = y_gen * sigma_gen + mu_gen
 
-    y_gen = np.array(y_gen[:, None], dtype='f4')
+    y_gen = np.array(y_gen, dtype='f4')
     y_gen = torch.from_numpy(y_gen)
     y_gen = F.sigmoid(y_gen).numpy()
 
@@ -89,43 +89,43 @@ x_test, y_test = generate_data(n_test)
 nnf_obj = NNFlexCode(
 ncomponents=ncomponents,
 verbose=2,
-#beta_loss_penal_exp=0.4,
-#beta_loss_penal_base=0.3,
-#nn_weights_loss_penal=0.1,
-nhlayers=10,
+beta_loss_penal_exp=0.0,
+beta_loss_penal_base=0.0,
+nn_weights_loss_penal=0.0,
 es=True,
+hls_multiplier=3,
+nhlayers=10,
+batch_max_size=1000,
 )
 
-"""
 nnf_obj.fit(x_train, y_train)
+
+#Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
 print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
 
-est_pdf = nnf_obj.predict([x_test, y_test])
-true_pdf = true_pdf_calc(x_test, y_test)
+#Check using true density information
+est_pdf = nnf_obj.predict(x_test)[:, 1:-1]
+true_pdf = true_pdf_calc(x_test, nnf_obj.y_grid[1:-1][:,None]).T
 sq_errors = (est_pdf - true_pdf)**2
-print("Squared density errors for test:\n", sq_errors)
+#print("Squared density errors for test:\n", sq_errors)
 print("\nAverage squared density errors for test:\n", sq_errors.mean())
-"""
 
 cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 
 gs_params_list = [
   dict(
-  ncomponents = np.arange(500, 30, -10),
-  nhlayers = np.arange(1, 20, 3),
+  ncomponents = np.arange(400, 20, -10),
   ),
   dict(
-  nn_weights_loss_penal = np.concatenate([np.logspace(-10, 0, 30),
+  nn_weights_loss_penal = np.concatenate([np.logspace(-10, 0.1, 30),
                                           np.logspace(0, 1, 30)]),
-  nhlayers = np.arange(1, 20, 3),
   ),
   dict(
-  beta_loss_penal_exp = np.concatenate([np.logspace(-10, 0, 7),
+  beta_loss_penal_exp = np.concatenate([np.logspace(-10, 0.1, 7),
                                           np.logspace(0, 1, 7)]),
-  beta_loss_penal_base = np.concatenate([np.logspace(-10, 0, 7),
+  beta_loss_penal_base = np.concatenate([np.logspace(-10, 0.1, 7),
                                           np.logspace(0, 1, 7)]),
-  nhlayers = np.arange(1, 20, 3),
   ),
 ]
 
