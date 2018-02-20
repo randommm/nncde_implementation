@@ -78,32 +78,37 @@ class NNFlexCode(BaseEstimator):
 
     grid_size : integer
         Set grid size for calculating utility on score method.
+    batch_test_size : integer
+        Size of the batch for validation and score methods.
+        Does not affect training efficiency, usefull when there's
+        little GPU memory.
     gpu : bool
         If true, will use gpu for computation, if available.
     verbose : integer
         Level verbosity. Set to 0 for silent mode.
     """
     def __init__(self,
-                 ncomponents=100,
+                 ncomponents=50,
                  beta_loss_penal_exp=0,
                  beta_loss_penal_base=0,
                  nn_weights_loss_penal=0,
-                 nhlayers=3,
+                 nhlayers=1,
                  hls_multiplier=5,
 
-                 es = False,
+                 es = True,
                  es_validation_set = 0.1,
-                 es_give_up_after_nepochs = 20,
+                 es_give_up_after_nepochs = 40,
                  es_splitter_random_state = 0,
 
                  nepoch=200,
 
                  batch_initial=100,
-                 batch_step_multiplier=1.3,
-                 batch_step_epoch_expon=2.0,
-                 batch_max_size=1000,
+                 batch_step_multiplier=1.1,
+                 batch_step_epoch_expon=1.2,
+                 batch_max_size=400,
 
                  grid_size=10000,
+                 batch_test_size=2000,
                  gpu=True,
                  verbose=1,
                  ):
@@ -163,6 +168,7 @@ class NNFlexCode(BaseEstimator):
         assert(self.batch_step_multiplier > 0)
         assert(self.batch_step_epoch_expon > 0)
         assert(self.batch_max_size >= 1)
+        assert(self.batch_test_size >= 1)
 
         assert(self.beta_loss_penal_exp >= 0)
         assert(self.beta_loss_penal_base >= 0)
@@ -199,6 +205,7 @@ class NNFlexCode(BaseEstimator):
 
 
         batch_max_size = min(self.batch_max_size, x_train.shape[0])
+        batch_test_size = min(self.batch_test_size, x_train.shape[0])
 
         start_time = time.process_time()
 
@@ -216,11 +223,11 @@ class NNFlexCode(BaseEstimator):
             target_train = np.ascontiguousarray(target_train)
 
             self.neural_net.train()
-            self._one_batch("train", batch_size, inputv_train,
+            self._one_epoch("train", batch_size, inputv_train,
                 target_train, optimizer, criterion, volatile=False)
             if self.es:
                 self.neural_net.eval()
-                avloss = self._one_batch("test", batch_max_size,
+                avloss = self._one_epoch("test", batch_test_size,
                     inputv_val, target_val, optimizer, criterion,
                     volatile=True)
                 if avloss <= self.best_loss_val:
@@ -247,7 +254,7 @@ class NNFlexCode(BaseEstimator):
 
         return self
 
-    def _one_batch(self, ftype, batch_size, inputv, target, optimizer,
+    def _one_epoch(self, ftype, batch_size, inputv, target, optimizer,
                    criterion, volatile):
 
         inputv = torch.from_numpy(inputv)
@@ -275,6 +282,7 @@ class NNFlexCode(BaseEstimator):
 
                 # Main loss
                 loss = criterion(output, target_this)
+
                 #loss1 = -2 * (output * target_this).sum(1)
                 #loss1 = loss1.mean()
                 #self._create_phi_grid()
@@ -284,8 +292,10 @@ class NNFlexCode(BaseEstimator):
 
                 #loss = loss1 + loss2
 
+                #alpha = min(0.1 * (self.epoch_count + 1) ** 2, 100)
                 #loss = (output * target_this).sum(1) + 1
-                #loss = F.softplus(loss, 1e5, 2000000)
+                #loss = F.softplus(loss, alpha)
+                #loss = Variable.clamp(loss, 1e-30)
                 #loss = - loss.log().mean()
 
                 # Penalize on betas
@@ -347,7 +357,7 @@ class NNFlexCode(BaseEstimator):
             inputv = Variable(inputv.data.pin_memory(), volatile=True)
             target = Variable(target.data.pin_memory(), volatile=True)
 
-        batch_size = min(self.batch_max_size, x_test.shape[0])
+        batch_size = min(self.batch_test_size, x_test.shape[0])
 
         loss_vals = []
         batch_sizes = []
@@ -414,19 +424,19 @@ class NNFlexCode(BaseEstimator):
             self._create_phi_grid()
             target = self.phi_grid
         else:
-            target = _np_to_var(fourierseries(y_pred,
-                                               self.ncomponents),
-                                 volatile=True)
+            target = _np_to_var(fourierseries(y_pred, self.ncomponents),
+                                volatile=True)
         if self.gpu:
             inputv = inputv.cuda()
             target = target.cuda()
         x_output_pred = self.neural_net(inputv)
         if y_pred is None:
-            output_pred = Variable.mm(self.neural_net(inputv), target)
+            output_pred = Variable.mm(x_output_pred, target)
         else:
-            output_pred = self.neural_net(inputv) * target
+            output_pred = x_output_pred * target
             output_pred = output_pred.sum(1)
         output_pred += 1
+        output_pred = F.relu(output_pred)
         return output_pred.data.cpu().numpy()
 
     def change_grid_size(self, new_grid_size):
@@ -439,7 +449,7 @@ class NNFlexCode(BaseEstimator):
     def _create_phi_grid(self):
         if not hasattr(self, "phi_grid"):
             self.y_grid = np.linspace(0, 1, self.grid_size,
-                                 dtype=np.float32)
+                                      dtype=np.float32)
             self.phi_grid = np.array(fourierseries(self.y_grid,
                                      self.ncomponents).T)
             self.phi_grid = _np_to_var(self.phi_grid)
@@ -457,22 +467,33 @@ class NNFlexCode(BaseEstimator):
                 self.m = nn.Dropout(p=0.2)
 
                 for i in range(nhlayers):
-                    self.__setattr__("fc_" + str(i),
+                    lname = "fc_" + str(i)
+                    self.__setattr__(lname,
                         nn.Linear(next_input_l_size, output_hl_size))
                     next_input_l_size = output_hl_size
+                    self._initialize_layer(self.__getattr__(lname))
 
                 self.fc_last = nn.Linear(next_input_l_size, ncomponents)
+                self._initialize_layer(self.fc_last)
 
                 self.nhlayers = nhlayers
+                self.np_sqrt2 = np.sqrt(2)
 
             def forward(self, x):
                 for i in range(self.nhlayers):
                     fc = self.__getattr__("fc_" + str(i))
-                    x = F.elu(fc(x))
+                    x = F.relu(fc(x))
                     #if self.training:
                     #    self.m(x)
                 x = self.fc_last(x)
+                x = F.sigmoid(x) * 2 * self.np_sqrt2 - self.np_sqrt2
                 return x
+
+            def _initialize_layer(self, layer):
+                nn.init.constant(layer.bias, 0)
+                gain=nn.init.calculate_gain('relu')
+                nn.init.xavier_uniform(layer.weight, gain=gain)
+
         self.neural_net = NeuralNet(self.x_dim, self.ncomponents,
                                     self.nhlayers, self.hls_multiplier)
 

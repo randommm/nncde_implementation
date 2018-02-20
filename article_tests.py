@@ -30,72 +30,28 @@ import os
 
 set_cache_dir("nnflexcode_fs_cache", bytes_limit=30*2**30)
 
-#Comment for non-deterministic results
-np.random.seed(10)
+from generate_data import generate_data, true_pdf_calc
 
 n_train = 100_000
 n_test = 800
-x_dim = 50
-ncomponents = 50
-
-beta_mu = stats.norm.rvs(size=x_dim, scale=0.01)
-beta_sigma = stats.norm.rvs(size=x_dim, scale=0.01)
-sigma = 0.8
-beta0_mu = -.3
-beta0_sigma = .1
-
-def func_mu(x):
-    x_transf = x.copy()
-    for i in range(0, x_dim-5, 5):
-        x_transf[i] = np.abs(x[i])**1.3
-        x_transf[i+1] = np.cos(x[i+1])
-        x_transf[i+2] = x[i]*x[i+2]
-        x_transf[i+4] = np.sqrt(np.abs(x[i+4]))
-        x_transf[i+5] = x[i+5] * np.sin(x[i])
-    return np.dot(beta_mu, x_transf)
-
-def func_sigma(x):
-    return np.abs(np.dot(beta_sigma, x))
-
-def true_pdf_calc(x_pred, y_pred):
-    logit_y_pred = - np.log(1/y_pred - 1)
-    mu = np.apply_along_axis(func_mu, 1, x_pred) + beta0_mu
-    sigma = np.apply_along_axis(func_sigma, 1, x_pred) + beta0_sigma
-    density = stats.skewnorm.pdf(logit_y_pred, loc=mu, scale=sigma, a=4)
-    density /= np.abs(y_pred - y_pred**2)
-    return density
-
-def generate_data(n_gen):
-    x_gen = stats.skewnorm.rvs(scale=4, size=n_gen*x_dim, a=2)
-    x_gen = x_gen.reshape((n_gen, x_dim))
-
-    mu_gen = np.apply_along_axis(func_mu, 1, x_gen)
-    sigma_gen = np.apply_along_axis(func_sigma, 1, x_gen)
-
-    y_gen = stats.skewnorm.rvs(loc=beta0_mu, scale=1,
-                               size=n_gen, a=4)
-    y_gen = mu_gen + y_gen * (sigma_gen + beta0_sigma)
-    y_gen = y_gen * sigma_gen + mu_gen
-
-    y_gen = np.array(y_gen, dtype='f4')
-    y_gen = torch.from_numpy(y_gen)
-    y_gen = F.sigmoid(y_gen).numpy()
-
-    return x_gen, y_gen
-
 x_train, y_train = generate_data(n_train)
 x_test, y_test = generate_data(n_test)
+
+print(y_train)
+print(min(y_train))
+print(max(y_train))
+
+ncomponents = 200
 
 nnf_obj = NNFlexCode(
 ncomponents=ncomponents,
 verbose=2,
-beta_loss_penal_exp=0.0,
-beta_loss_penal_base=0.0,
+beta_loss_penal_exp=0.3,
+beta_loss_penal_base=0.1,
 nn_weights_loss_penal=0.0,
 es=True,
-hls_multiplier=3,
-nhlayers=10,
-batch_max_size=1000,
+hls_multiplier=1,
+nhlayers=1,
 )
 
 nnf_obj.fit(x_train, y_train)
@@ -111,6 +67,12 @@ sq_errors = (est_pdf - true_pdf)**2
 #print("Squared density errors for test:\n", sq_errors)
 print("\nAverage squared density errors for test:\n", sq_errors.mean())
 
+import matplotlib.pyplot as plt
+plt.plot(true_pdf[1])
+plt.plot(est_pdf[1])
+plt.show()
+
+"""
 cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 
 gs_params_list = [
@@ -147,7 +109,7 @@ for gs_params in gs_params_list:
     else:
         gs_clf = joblib.load(filename)
         print("Loaded file", filename)
-
+"""
 
 """
 gs_params = dict(
