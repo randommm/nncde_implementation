@@ -97,14 +97,14 @@ class NNFlexCode(BaseEstimator):
 
                  es = True,
                  es_validation_set = 0.1,
-                 es_give_up_after_nepochs = 40,
+                 es_give_up_after_nepochs = 20,
                  es_splitter_random_state = 0,
 
                  nepoch=200,
 
                  batch_initial=100,
-                 batch_step_multiplier=1.1,
-                 batch_step_epoch_expon=1.2,
+                 batch_step_multiplier=1.2,
+                 batch_step_epoch_expon=1.1,
                  batch_max_size=400,
 
                  grid_size=10000,
@@ -209,7 +209,7 @@ class NNFlexCode(BaseEstimator):
 
         start_time = time.process_time()
 
-        optimizer = optim.Adam(self.neural_net.parameters())
+        optimizer = optim.Adadelta(self.neural_net.parameters())
         for _ in range_epoch:
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
@@ -469,7 +469,7 @@ class NNFlexCode(BaseEstimator):
 
                 next_input_l_size = x_dim
                 output_hl_size = int(ncomponents * hls_multiplier)
-                self.m = nn.Dropout(p=0.2)
+                self.m = nn.AlphaDropout(p=0.5)
 
                 for i in range(nhlayers):
                     lname = "fc_" + str(i)
@@ -507,11 +507,10 @@ class NNFlexCode(BaseEstimator):
                     fc = self.__getattr__("fc_" + str(i))
                     fcn = self.__getattr__("fc_n_" + str(i))
                     x = fcn(F.relu(fc(x)))
-                    #if self.training:
-                    #    self.m(x)
+                    self.m(x)
                 x = self.fc_last(x)
                 x = F.sigmoid(x) * 2 * self.np_sqrt2 - self.np_sqrt2
-                x = self._decay_x(x)
+                #x = self._decay_x(x)
                 return x
 
             def _initialize_layer(self, layer):
