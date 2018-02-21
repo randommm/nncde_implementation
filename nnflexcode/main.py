@@ -209,7 +209,7 @@ class NNFlexCode(BaseEstimator):
 
         start_time = time.process_time()
 
-        optimizer = optim.Adadelta(self.neural_net.parameters())
+        optimizer = optim.Adam(self.neural_net.parameters())
         for _ in range_epoch:
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
@@ -277,6 +277,10 @@ class NNFlexCode(BaseEstimator):
                     target_next = target_next.cuda(async=True)
 
             if i != 0:
+                batch_actual_size = inputv_this.shape[0]
+                if batch_actual_size != batch_size and ftype == "train":
+                    continue
+
                 optimizer.zero_grad()
                 output = self.neural_net(inputv_this)
 
@@ -320,7 +324,6 @@ class NNFlexCode(BaseEstimator):
                     loss += penal * self.nn_weights_loss_penal
 
                 # Correction for last batch as it might be smaller
-                batch_actual_size = inputv_this.shape[0]
                 if batch_actual_size != batch_size:
                     loss *= batch_actual_size / batch_size
 
@@ -349,6 +352,7 @@ class NNFlexCode(BaseEstimator):
         return avgloss
 
     def score(self, x_test, y_test):
+        self.neural_net.eval()
         inputv = _np_to_var(x_test, volatile=True)
         target = _np_to_var(fourierseries(y_test, self.ncomponents),
                             volatile=True)
@@ -419,6 +423,7 @@ class NNFlexCode(BaseEstimator):
         return -1 * np.average(loss_vals, weights=batch_sizes)
 
     def predict(self, x_pred, y_pred=None):
+        self.neural_net.eval()
         inputv = _np_to_var(x_pred, volatile=True)
         if y_pred is None:
             self._create_phi_grid()
@@ -468,31 +473,51 @@ class NNFlexCode(BaseEstimator):
 
                 for i in range(nhlayers):
                     lname = "fc_" + str(i)
+                    lnname = "fc_n_" + str(i)
                     self.__setattr__(lname,
                         nn.Linear(next_input_l_size, output_hl_size))
+                    self.__setattr__(lnname,
+                        nn.BatchNorm1d(output_hl_size))
                     next_input_l_size = output_hl_size
                     self._initialize_layer(self.__getattr__(lname))
 
                 self.fc_last = nn.Linear(next_input_l_size, ncomponents)
                 self._initialize_layer(self.fc_last)
+                self.exp_decay = nn.Parameter(torch.Tensor([0.0]))
+                self.base_decay = nn.Parameter(torch.Tensor([-5.0]))
 
                 self.nhlayers = nhlayers
+                self.ncomponents = ncomponents
                 self.np_sqrt2 = np.sqrt(2)
+
+            def _decay_x(self, x):
+                exp_decay = - Variable.exp(self.exp_decay)
+                base_decay = Variable.exp(self.base_decay) + 1
+
+                decay = Variable(
+                    x.data.new(
+                        range(1, self.ncomponents + 1))
+                    ) * exp_decay
+                decay = base_decay ** decay
+
+                return x * decay
 
             def forward(self, x):
                 for i in range(self.nhlayers):
                     fc = self.__getattr__("fc_" + str(i))
-                    x = F.relu(fc(x))
+                    fcn = self.__getattr__("fc_n_" + str(i))
+                    x = fcn(F.relu(fc(x)))
                     #if self.training:
                     #    self.m(x)
                 x = self.fc_last(x)
                 x = F.sigmoid(x) * 2 * self.np_sqrt2 - self.np_sqrt2
+                x = self._decay_x(x)
                 return x
 
             def _initialize_layer(self, layer):
                 nn.init.constant(layer.bias, 0)
                 gain=nn.init.calculate_gain('relu')
-                nn.init.xavier_uniform(layer.weight, gain=gain)
+                nn.init.xavier_normal(layer.weight, gain=gain)
 
         self.neural_net = NeuralNet(self.x_dim, self.ncomponents,
                                     self.nhlayers, self.hls_multiplier)

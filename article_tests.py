@@ -41,17 +41,17 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 200
+ncomponents = 10
 
 nnf_obj = NNFlexCode(
 ncomponents=ncomponents,
 verbose=2,
-beta_loss_penal_exp=0.3,
-beta_loss_penal_base=0.1,
+beta_loss_penal_exp=0.0,
+beta_loss_penal_base=0.0,
 nn_weights_loss_penal=0.0,
 es=True,
 hls_multiplier=1,
-nhlayers=1,
+nhlayers=10,
 )
 
 nnf_obj.fit(x_train, y_train)
