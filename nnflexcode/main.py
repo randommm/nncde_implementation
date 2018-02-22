@@ -102,10 +102,10 @@ class NNFlexCode(BaseEstimator):
 
                  nepoch=200,
 
-                 batch_initial=100,
-                 batch_step_multiplier=1.2,
+                 batch_initial=400,
+                 batch_step_multiplier=1.1,
                  batch_step_epoch_expon=1.1,
-                 batch_max_size=400,
+                 batch_max_size=500,
 
                  grid_size=10000,
                  batch_test_size=2000,
@@ -209,8 +209,10 @@ class NNFlexCode(BaseEstimator):
 
         start_time = time.process_time()
 
-        optimizer = optim.Adadelta(self.neural_net.parameters())
+        optimizer = optim.Adam(self.neural_net.parameters())
+        self.nn_weights_loss_penal = 100
         for _ in range_epoch:
+            self.nn_weights_loss_penal /= 2.0
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
                 self.batch_step_multiplier *
@@ -422,26 +424,38 @@ class NNFlexCode(BaseEstimator):
 
         return -1 * np.average(loss_vals, weights=batch_sizes)
 
-    def predict(self, x_pred, y_pred=None):
+    def predict(self, x_pred):
         self.neural_net.eval()
         inputv = _np_to_var(x_pred, volatile=True)
-        if y_pred is None:
-            self._create_phi_grid()
-            target = self.phi_grid
-        else:
-            target = _np_to_var(fourierseries(y_pred, self.ncomponents),
-                                volatile=True)
+        self._create_phi_grid()
+        target = self.phi_grid
+
         if self.gpu:
             inputv = inputv.cuda()
             target = target.cuda()
+
+        #Normalize by min
+        #x_output_pred = self.neural_net(inputv)
+        #output_pred = Variable.mm(x_output_pred, target)
+        #output_pred += 1
+
+        #output_pred = output_pred.data.cpu().numpy()
+
+        #normalizer = np.min(output_pred, 1)
+        #normalizer = torch.from_numpy(normalizer)
+        #normalizer = torch.clamp(normalizer, max=0)
+        #normalizer = normalizer.numpy()
+
+        #output_pred = output_pred - normalizer[:, None]
+        #output_pred /= output_pred.mean(1)[:, None]
+        #return output_pred
+
         x_output_pred = self.neural_net(inputv)
-        if y_pred is None:
-            output_pred = Variable.mm(x_output_pred, target)
-        else:
-            output_pred = x_output_pred * target
-            output_pred = output_pred.sum(1)
+        output_pred = Variable.mm(x_output_pred, target)
         output_pred += 1
+
         output_pred = F.relu(output_pred)
+        output_pred /= output_pred.mean(1)[:,None]
         return output_pred.data.cpu().numpy()
 
     def change_grid_size(self, new_grid_size):
@@ -509,7 +523,7 @@ class NNFlexCode(BaseEstimator):
                     x = fcn(F.relu(fc(x)))
                     self.m(x)
                 x = self.fc_last(x)
-                x = F.sigmoid(x) * 2 * self.np_sqrt2 - self.np_sqrt2
+                x = F.sigmoid(x / 10) * 2 * self.np_sqrt2 - self.np_sqrt2
                 #x = self._decay_x(x)
                 return x
 
