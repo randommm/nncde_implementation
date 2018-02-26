@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nnflexcode import NNFlexCode, set_cache_dir
+from nncde import NNCDE, set_cache_dir
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 import hashlib
@@ -28,7 +28,7 @@ import pickle
 from sklearn.externals import joblib
 import os
 
-set_cache_dir("nnflexcode_fs_cache", bytes_limit=30*2**30)
+set_cache_dir("nncde_fs_cache", bytes_limit=30*2**30)
 
 from generate_data import generate_data, true_pdf_calc
 
@@ -41,17 +41,17 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 7
+ncomponents = 15
 
-nnf_obj = NNFlexCode(
+nnf_obj = NNCDE(
 ncomponents=ncomponents,
 verbose=2,
 beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weights_loss_penal=0.0,
 es=True,
-hls_multiplier=2,
-nhlayers=1,
+hls_multiplier=1,
+nhlayers=0,
 #gpu=False,
 )
 
@@ -98,7 +98,7 @@ for gs_params in gs_params_list:
     h.update(pickle.dumps(y_train))
     h.update(pickle.dumps(gs_params))
 
-    filename = ("nnflexcode_fs_cache/model_" + h.hexdigest() + ".pkl")
+    filename = ("nncde_fs_cache/model_" + h.hexdigest() + ".pkl")
     if not os.path.isfile(filename):
         print("Started working on file", filename)
         gs_clf = GridSearchCV(nnf_obj, gs_params,
@@ -129,7 +129,7 @@ i = 0
 gs_clf_list = []
 cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 for i in range(10):
-    filename = ("nnflexcode_fs_cache/model_" + h.hexdigest() + "_"
+    filename = ("nncde_fs_cache/model_" + h.hexdigest() + "_"
                 + str(i) + ".pkl")
     if not os.path.isfile(filename):
         print("Started working on file", filename)
