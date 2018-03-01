@@ -33,7 +33,6 @@ class NeuralNet(nn.Module):
         nn.init.uniform(layer.weight, -5, 5)
 
 
-
 x_grid = np.linspace(-1, 1, 10000, dtype="f4")
 x_grid_v = Variable(torch.from_numpy(x_grid[:,None]), volatile=True)
 ax = plt.figure(figsize=[8.4, 5.8]).add_subplot(111)
