@@ -12,7 +12,7 @@ nodes_weights = ['$\\beta^{(2)}_{1,1}$', '$\\beta^{(2)}_{2,1}$',
 nodes_mult = ['$\\times$', '$\\times $', '$ \\times$', '$ \\times $']
 
 node_sum = '+'
-node_intercept = '$\\beta^{(2)}_0$'
+node_intercept = '$\\beta^{(2)}_{0,1}$'
 node_output = '$X_1^{(3)}$'
 node_actf = '$\\mathbb{F}^{(2)}$'
 
