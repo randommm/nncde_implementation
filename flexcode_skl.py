@@ -1,6 +1,7 @@
 from sklearn.base import BaseEstimator
 from flexcode import FlexCodeModel
 from flexcode.regression_models import NN
+import numpy as np
 
 class FlexCodeSKL(BaseEstimator):
     def __init__(self, k=20):
@@ -22,6 +23,18 @@ class FlexCodeSKL(BaseEstimator):
         return self
 
     def predict(self, x_pred):
+        #prediction = np.empty((x_pred.shape[0], 1000))
+        #step = 10
+        #print("O")
+        #for i in range(0, x_pred.shape[0], step):
+            #self.fcmodel.predict(x_pred[i:i+step], n_grid=1000)
+            ##prediction[i:i+step] = pred[0].copy()
+            #if i == 0:
+                #pred = self.fcmodel.predict(x_pred[i:i+step], n_grid=1000)
+                #grid = pred[1].copy()
+                #del(pred)
+
+        #return prediction, grid
         return self.fcmodel.predict(x_pred, n_grid=1000)
 
     def score(self, x_test, y_test):

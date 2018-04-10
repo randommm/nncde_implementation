@@ -29,18 +29,20 @@ import hashlib
 import pickle
 from sklearn.externals import joblib
 import os
+import pandas as pd
 
 from flexcode_skl import FlexCodeSKL
 
-from generate_data import generate_data, true_pdf_calc
+np.random.seed(10)
+df = pd.read_csv("spectroscopic.txt", ' ')
+ndf = np.random.permutation(df)
+y_train = np.array(ndf)[:,-1:]
+x_train = np.array(ndf)[:,:-1]
 
-n_train = 100_000
-n_test = 1000
-x_train, y_train = generate_data(n_train)
-x_test, y_test = generate_data(n_test)
-y_train = y_train[:, None]
-y_test = y_test[:, None]
-
+n_train = round(x_train.shape[0] * 0.99)
+n_test = x_train.shape[0] - n_train
+x_test, y_test = x_train[:n_train], y_train[:n_train]
+x_train, y_train = x_train[n_train:], y_train[n_train:]
 
 fcs_cv_obj = FlexCodeSKL()
 
@@ -73,15 +75,3 @@ fcs_obj = fcs_cv_obj.best_estimator_
 
 print("Score (utility) on test:", fcs_obj.score(x_test, y_test))
 
-#Check using true density information
-est_pdf, y_grid = fcs_obj.predict(x_test)
-est_pdf = est_pdf[:, 1:-1]
-true_pdf = true_pdf_calc(x_test, y_grid[1:-1][:,None]).T
-sq_errors = (est_pdf - true_pdf)**2
-#print("Squared density errors for test:\n", sq_errors)
-print("\nAverage squared density errors for test:\n", sq_errors.mean())
-
-import matplotlib.pyplot as plt
-plt.plot(true_pdf[1])
-plt.plot(est_pdf[1])
-plt.show()

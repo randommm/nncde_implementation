@@ -37,7 +37,7 @@ ndf = np.random.permutation(df)
 y_train = np.array(ndf)[:,-1:]
 x_train = np.array(ndf)[:,:-1]
 
-n_train = round(x_train.shape[0] * 0.9)
+n_train = round(x_train.shape[0] * 0.99)
 n_test = x_train.shape[0] - n_train
 x_test, y_test = x_train[:n_train], y_train[:n_train]
 x_train, y_train = x_train[n_train:], y_train[n_train:]
@@ -46,7 +46,7 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 15
+ncomponents = 20
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
@@ -55,8 +55,8 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weights_loss_penal=0.0,
 es=True,
-hls_multiplier=1,
-nhlayers=1,
+hls_multiplier=3,
+nhlayers=10,
 #gpu=False,
 )
 
@@ -65,7 +65,3 @@ nnf_obj.fit(x_train, y_train)
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
 print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
-
-import matplotlib.pyplot as plt
-plt.plot(est_pdf[1])
-plt.show()
