@@ -31,7 +31,7 @@ from sklearn.externals import joblib
 import os
 import pandas as pd
 
-from flexcode_skl import SKLFlexCodeKNN
+from flexcode_skl import SKLFlexCodeXGBoost
 
 np.random.seed(10)
 df = pd.read_csv("spectroscopic.txt", ' ')
@@ -44,15 +44,15 @@ n_train = x_train.shape[0] - n_test
 x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
-fcs_cv_obj = SKLFlexCodeKNN()
+fcs_cv_obj = SKLFlexCodeXGBoost()
 
 cv = ShuffleSplit(n_splits=1, test_size=n_test, random_state=0)
 
 gs_params = dict(
-  k = np.array([1, 5, 15, 25, 35, 45, 55, 65, 75]),
+  max_depth = np.array([6, 12]),
 )
 
-name = "fcknn"
+name = "fcxgb"
 h = hashlib.new('ripemd160')
 h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))
@@ -61,7 +61,7 @@ filename = ("nncde_fs_cache/fcs_cv_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=2,
+    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=1,
                            verbose=100)
     fcs_cv_obj.fit(x_train, y_train)
 

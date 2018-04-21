@@ -1,19 +1,15 @@
 from sklearn.base import BaseEstimator
 from flexcode import FlexCodeModel
-from flexcode.regression_models import NN
+from flexcode.regression_models import NN, RandomForest, XGBoost
 import numpy as np
 
-class FlexCodeSKL(BaseEstimator):
-    def __init__(self, k=20):
-        self.k = k
-
+class SKLFlexCodeBase(BaseEstimator):
     def fit(self, x_train, y_train):
-        self.fcmodel = FlexCodeModel(NN,
-            max_basis=30, basis_system="Fourier",
-            regression_params={"k": self.k}, z_min=0,
-            z_max=1)
+        self._create_model()
 
-        n_train = round(x_train.shape[0] * 0.9)
+        n_val = round(min(x_train.shape[0] * 0.10, 5000))
+        n_train = x_train.shape[0] - n_val
+
         x_val, y_val = x_train[:n_train], y_train[:n_train]
         x_train, y_train = x_train[n_train:], y_train[n_train:]
 
@@ -39,3 +35,44 @@ class FlexCodeSKL(BaseEstimator):
 
     def score(self, x_test, y_test):
         return - self.fcmodel.estimate_error(x_test, y_test)
+
+class SKLFlexCodeKNN(SKLFlexCodeBase):
+    def __init__(self, k=5):
+        self.k = k
+
+    def _create_model(self):
+        self.fcmodel = FlexCodeModel(NN,
+                    max_basis=30, basis_system="Fourier",
+                    regression_params={"k": self.k},
+                    z_min=0, z_max=1)
+
+class SKLFlexCodeXGBoost(SKLFlexCodeBase):
+    def __init__(self, max_depth=6, eta=0.3, silent=1,
+                 objective='reg:linear'):
+        self.max_depth = max_depth
+        self.eta = eta
+        self.silent = silent
+        self.objective = objective
+
+    def _create_model(self):
+        self.fcmodel = FlexCodeModel(XGBoost,
+                          max_basis=30, basis_system="Fourier",
+                          regression_params = {
+                             'max_depth' : self.max_depth,
+                             'eta' : self.eta,
+                             'silent' : self.silent,
+                             'objective' : self.objective,
+                          },
+                          z_min=0, z_max=1)
+
+class SKLFlexCodeRandomForest(SKLFlexCodeBase):
+    def __init__(self, n_estimators=10):
+        self.n_estimators = n_estimators
+
+    def _create_model(self):
+        self.fcmodel = FlexCodeModel(RandomForest,
+                    max_basis=30, basis_system="Fourier",
+                    regression_params = {
+                       'n_estimators' : self.n_estimators,
+                    },
+                    z_min=0, z_max=1)

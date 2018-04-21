@@ -34,28 +34,28 @@ set_cache_dir("nncde_fs_cache", bytes_limit=30*2**30)
 np.random.seed(10)
 df = pd.read_csv("spectroscopic.txt", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:,-1:]
-x_train = np.array(ndf)[:,:-1]
+y_train = np.array(ndf)[:100000,-1:]
+x_train = np.array(ndf)[:100000,:-1]
 
-n_train = round(x_train.shape[0] * 0.99)
-n_test = x_train.shape[0] - n_train
-x_test, y_test = x_train[:n_train], y_train[:n_train]
-x_train, y_train = x_train[n_train:], y_train[n_train:]
+n_test = round(min(x_train.shape[0] * 0.10, 5000))
+n_train = x_train.shape[0] - n_test
+x_test, y_test = x_train[n_train:], y_train[n_train:]
+x_train, y_train = x_train[:n_train], y_train[:n_train]
 
 print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 20
+ncomponents = 30
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
 verbose=2,
 beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
-nn_weights_loss_penal=0.0,
+nn_weight_decay=0.0,
 es=True,
-hls_multiplier=3,
+hls_multiplier=50,
 nhlayers=10,
 #gpu=False,
 )

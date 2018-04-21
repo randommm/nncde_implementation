@@ -43,45 +43,19 @@ print(max(y_train))
 
 ncomponents = 20
 
-nnf_cv_obj = NNCDECached(
+nnf_obj = NNCDE(
 ncomponents=ncomponents,
 verbose=2,
 beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
-nn_weights_loss_penal=0.0,
+nn_weight_decay=0.0,
 es=True,
-hls_multiplier=2,
-nhlayers=5,
+hls_multiplier=3,
+nhlayers=10,
 #gpu=False,
 )
 
-cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
-
-gs_params = dict(
-  ncomponents = np.array([5, 10, 15, 20]),
-  nhlayers = [4, 2, 0],
-  hls_multiplier = [2],
-)
-
-name = "nn"
-h = hashlib.new('ripemd160')
-h.update(pickle.dumps(x_train))
-h.update(pickle.dumps(y_train))
-h.update(pickle.dumps(gs_params))
-filename = ("nncde_fs_cache/model_" + name + "_" +
-            h.hexdigest() + ".pkl")
-if not os.path.isfile(filename):
-    print("Started working on file", filename)
-    nnf_cv_obj = GridSearchCV(nnf_cv_obj, gs_params, cv=cv, pre_dispatch=1, verbose=100)
-    nnf_cv_obj.fit(x_train, y_train)
-
-    joblib.dump(nnf_cv_obj, filename)
-    print("Saved file", filename)
-else:
-    nnf_cv_obj = joblib.load(filename)
-    print("Loaded file", filename)
-
-nnf_obj = nnf_cv_obj.best_estimator_
+nnf_obj.fit(x_train, y_train)
 
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
