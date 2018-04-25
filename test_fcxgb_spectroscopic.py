@@ -34,7 +34,7 @@ import pandas as pd
 from flexcode_skl import SKLFlexCodeXGBoost
 
 np.random.seed(10)
-df = pd.read_csv("spectroscopic.txt", ' ')
+df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
 y_train = np.array(ndf)[:100000,-1:]
 x_train = np.array(ndf)[:100000,:-1]

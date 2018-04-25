@@ -31,28 +31,35 @@ from sklearn.externals import joblib
 import os
 import pandas as pd
 
-from flexcode_skl import SKLFlexCodeRandomForest
+from flexcode_skl import SKLFlexCodeKNN
+
+from prepare_sgemm import df
 
 np.random.seed(10)
-df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:10000,-1:]
-x_train = np.array(ndf)[:10000,:-1]
+y_train = np.array(ndf)[:,-1:]
+x_train = np.array(ndf)[:,:-1]
+
+y_train = np.log(y_train + 0.001)
+y_train_min = np.max(y_train)
+y_train_max = np.max(y_train)
+y_train = (y_train - y_train_min) / y_train_max
+y_train = (y_train + 0.01) / 1.0202
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
 n_train = x_train.shape[0] - n_test
 x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
-fcs_cv_obj = SKLFlexCodeRandomForest()
+fcs_cv_obj = SKLFlexCodeKNN()
 
-cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
+cv = ShuffleSplit(n_splits=1, test_size=n_test, random_state=0)
 
 gs_params = dict(
-  n_estimators = np.array([200, 100, 50, 20, 10]),
+  k = np.array([1, 5, 15, 25, 35, 45, 55, 65, 75]),
 )
 
-name = "fcrf"
+name = "fcknn"
 h = hashlib.new('ripemd160')
 h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))

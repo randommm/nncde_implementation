@@ -29,13 +29,18 @@ from sklearn.externals import joblib
 import os
 import pandas as pd
 
-set_cache_dir("nncde_fs_cache", bytes_limit=30*2**30)
+from prepare_pnad import df
 
 np.random.seed(10)
-df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:10000,-1:]
-x_train = np.array(ndf)[:10000,:-1]
+y_train = np.array(ndf)[:,-1:]
+x_train = np.array(ndf)[:,:-1]
+
+y_train = np.log(y_train + 0.001)
+y_train_min = np.max(y_train)
+y_train_max = np.max(y_train)
+y_train = (y_train - y_train_min) / y_train_max
+y_train = (y_train + 0.01) / 1.0202
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
 n_train = x_train.shape[0] - n_test
@@ -55,9 +60,9 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weight_decay=0.0,
 es=True,
-hls_multiplier=50,
-nhlayers=10,
-gpu=False,
+hls_multiplier=30,
+nhlayers=3,
+#gpu=False,
 )
 
 nnf_obj.fit(x_train, y_train)

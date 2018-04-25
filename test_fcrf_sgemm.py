@@ -33,11 +33,18 @@ import pandas as pd
 
 from flexcode_skl import SKLFlexCodeRandomForest
 
+from prepare_sgemm import df
+
 np.random.seed(10)
-df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:10000,-1:]
-x_train = np.array(ndf)[:10000,:-1]
+y_train = np.array(ndf)[:,-1:]
+x_train = np.array(ndf)[:,:-1]
+
+y_train = np.log(y_train + 0.001)
+y_train_min = np.max(y_train)
+y_train_max = np.max(y_train)
+y_train = (y_train - y_train_min) / y_train_max
+y_train = (y_train + 0.01) / 1.0202
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
 n_train = x_train.shape[0] - n_test
