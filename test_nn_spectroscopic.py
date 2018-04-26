@@ -34,8 +34,8 @@ set_cache_dir("nncde_fs_cache", bytes_limit=30*2**30)
 np.random.seed(10)
 df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:10000,-1:]
-x_train = np.array(ndf)[:10000,:-1]
+y_train = np.array(ndf)[:100000,-1:]
+x_train = np.array(ndf)[:100000,:-1]
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
 n_train = x_train.shape[0] - n_test
@@ -57,7 +57,7 @@ nn_weight_decay=0.0,
 es=True,
 hls_multiplier=50,
 nhlayers=10,
-gpu=False,
+gpu=True,
 )
 
 nnf_obj.fit(x_train, y_train)
@@ -65,3 +65,6 @@ nnf_obj.fit(x_train, y_train)
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
 print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
+
+#from flexcode.loss_functions import cde_loss
+#cde_loss(nnf_obj.predict(x_test), nnf_obj.y_grid, y_test)

@@ -61,7 +61,7 @@ filename = ("nncde_fs_cache/fcs_cv_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=2,
+    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=1,
                            verbose=100)
     fcs_cv_obj.fit(x_train, y_train)
 

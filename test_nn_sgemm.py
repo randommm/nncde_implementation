@@ -62,6 +62,7 @@ nn_weight_decay=0.0,
 es=True,
 hls_multiplier=30,
 nhlayers=3,
+convolutional=True
 #gpu=False,
 )
 

@@ -51,34 +51,23 @@ n_train = x_train.shape[0] - n_test
 x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
-fcs_cv_obj = SKLFlexCodeRandomForest()
-
-cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
-
-gs_params = dict(
-  n_estimators = np.array([200, 100, 50, 20, 10]),
-)
+fcs_obj = SKLFlexCodeRandomForest(n_estimators=20)
 
 name = "fcrf"
 h = hashlib.new('ripemd160')
 h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))
-h.update(pickle.dumps(gs_params))
-filename = ("nncde_fs_cache/fcs_cv_obj_" + name + "_" +
+filename = ("nncde_fs_cache/fcs_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=2,
-                           verbose=100)
-    fcs_cv_obj.fit(x_train, y_train)
+    fcs_obj.fit(x_train, y_train)
 
-    joblib.dump(fcs_cv_obj, filename)
+    joblib.dump(fcs_obj, filename)
     print("Saved file", filename)
 else:
-    fcs_cv_obj = joblib.load(filename)
+    fcs_obj = joblib.load(filename)
     print("Loaded file", filename)
-
-fcs_obj = fcs_cv_obj.best_estimator_
 
 print("Score (utility) on test:", fcs_obj.score(x_test, y_test))
 
