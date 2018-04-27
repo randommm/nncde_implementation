@@ -3,19 +3,15 @@
 #
 #This program is free software: you can redistribute it and/or modify
 #it under the terms of the GNU General Public License as published by
-#the Free Software Foundation, version 2 or 3 the License.
-#
-#Obs.: note that the other files are licensed under GNU GPL 3. This
-#file is licensed under GNU GPL 2 or 3 for compatibility with flexcode
-#license only.
-#
+#the Free Software Foundation, version 3 of the License.
+
 #This program is distributed in the hope that it will be useful,
 #but WITHOUT ANY WARRANTY; without even the implied warranty of
 #MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
 #GNU General Public License for more details.
 
-#You can get a copy of the GNU General Public License version 2 at
-#<http://www.gnu.org/licenses/>.
+#You should have received a copy of the GNU General Public License
+#along with this program.    If not, see <http://www.gnu.org/licenses/>.
 #----------------------------------------------------------------------
 
 import torch
@@ -23,6 +19,8 @@ import torch.nn.functional as F
 
 import numpy as np
 import scipy.stats as stats
+
+from nncde import NNCDE, set_cache_dir
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 
 import hashlib
@@ -31,14 +29,17 @@ from sklearn.externals import joblib
 import os
 import pandas as pd
 
-from flexcode_skl import SKLFlexCodeXGBoost
-
-from prepare_sgemm import df
-
 np.random.seed(10)
+df = pd.read_csv("dbs/diamonds.csv")
+for column in ['cut', 'color', 'clarity']:
+    new_df = pd.get_dummies(df[column], dummy_na=True,
+                            drop_first=True, prefix=column)
+    df = pd.concat([df, new_df], axis=1)
+    df = df.drop(column, 1)
+
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:,-1:]
-x_train = np.array(ndf)[:,:-1]
+y_train = np.array(df["price"])
+x_train = np.array(df.drop("price", 1).iloc[:, 1:])
 
 y_train = np.log(y_train + 0.001)
 y_train_min = np.max(y_train)
@@ -51,23 +52,27 @@ n_train = x_train.shape[0] - n_test
 x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
-fcs_obj = SKLFlexCodeXGBoost()
+print(y_train)
+print(min(y_train))
+print(max(y_train))
 
-name = "fcxgb"
-h = hashlib.new('ripemd160')
-h.update(pickle.dumps(x_train))
-h.update(pickle.dumps(y_train))
-filename = ("nncde_fs_cache/fcs_obj_" + name + "_" +
-            h.hexdigest() + ".pkl")
-if not os.path.isfile(filename):
-    print("Started working on file", filename)
-    fcs_obj.fit(x_train, y_train)
+ncomponents = 30
 
-    joblib.dump(fcs_obj, filename)
-    print("Saved file", filename)
-else:
-    fcs_obj = joblib.load(filename)
-    print("Loaded file", filename)
+nnf_obj = NNCDE(
+ncomponents=ncomponents,
+verbose=2,
+beta_loss_penal_exp=0.0,
+beta_loss_penal_base=0.0,
+nn_weight_decay=0.0,
+es=True,
+hls_multiplier=30,
+nhlayers=3,
+convolutional=True
+#gpu=False,
+)
 
-print("Score (utility) on test:", fcs_obj.score(x_test, y_test))
+nnf_obj.fit(x_train, y_train)
 
+#Check without using true density information
+print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
+print("Score (utility) on test:", nnf_obj.score(x_test, y_test))

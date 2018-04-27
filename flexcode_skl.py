@@ -42,18 +42,20 @@ class SKLFlexCodeBase(BaseEstimator):
         return - self.fcmodel.estimate_error(x_test, y_test, n_grid = 1000)
 
 class SKLFlexCodeKNN(SKLFlexCodeBase):
-    def __init__(self, k=5):
+    def __init__(self, k=5, max_basis=30):
+        self.max_basis = max_basis
         self.k = k
 
     def _create_model(self):
         self.fcmodel = FlexCodeModel(NN,
-                    max_basis=30, basis_system="Fourier",
+                    max_basis=self.max_basis, basis_system="Fourier",
                     regression_params={"k": self.k},
                     z_min=0, z_max=1)
 
 class SKLFlexCodeXGBoost(SKLFlexCodeBase):
     def __init__(self, max_depth=6, eta=0.3, silent=1,
-                 objective='reg:linear'):
+                 objective='reg:linear', max_basis=30):
+        self.max_basis = max_basis
         self.max_depth = max_depth
         self.eta = eta
         self.silent = silent
@@ -61,7 +63,8 @@ class SKLFlexCodeXGBoost(SKLFlexCodeBase):
 
     def _create_model(self):
         self.fcmodel = FlexCodeModel(XGBoost,
-                          max_basis=30, basis_system="Fourier",
+                          max_basis=self.max_basis,
+                          basis_system="Fourier",
                           regression_params = {
                              'max_depth' : self.max_depth,
                              'eta' : self.eta,
@@ -71,12 +74,13 @@ class SKLFlexCodeXGBoost(SKLFlexCodeBase):
                           z_min=0, z_max=1)
 
 class SKLFlexCodeRandomForest(SKLFlexCodeBase):
-    def __init__(self, n_estimators=10):
+    def __init__(self, n_estimators=10, max_basis=30):
+        self.max_basis = max_basis
         self.n_estimators = n_estimators
 
     def _create_model(self):
         self.fcmodel = FlexCodeModel(RandomForest,
-                    max_basis=30, basis_system="Fourier",
+                    max_basis=self.max_basis, basis_system="Fourier",
                     regression_params = {
                        'n_estimators' : self.n_estimators,
                     },
