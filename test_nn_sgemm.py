@@ -22,6 +22,8 @@ import scipy.stats as stats
 
 from nncde import NNCDE, set_cache_dir
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.decomposition import PCA
 
 import hashlib
 import pickle
@@ -37,9 +39,9 @@ y_train = np.array(ndf)[:,-1:]
 x_train = np.array(ndf)[:,:-1]
 
 y_train = np.log(y_train + 0.001)
-y_train_min = np.max(y_train)
+y_train_min = np.min(y_train)
 y_train_max = np.max(y_train)
-y_train = (y_train - y_train_min) / y_train_max
+y_train = (y_train - y_train_min) / (y_train_max - y_train_min)
 y_train = (y_train + 0.01) / 1.0202
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
@@ -51,7 +53,7 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 30
+ncomponents = 100
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
@@ -60,11 +62,28 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weight_decay=0.0,
 es=True,
-hls_multiplier=30,
-nhlayers=3,
-convolutional=True
+hls_multiplier=25,
+nhlayers=10,
 #gpu=False,
 )
+
+nnf_obj = Pipeline([('pca', PCA(whiten=True)), ('nnf_obj', nnf_obj)])
+
+name = "ann"
+h = hashlib.new('ripemd160')
+h.update(pickle.dumps(x_train))
+h.update(pickle.dumps(y_train))
+filename = ("nncde_fs_cache/fcs_obj_" + name + "_" +
+            h.hexdigest() + ".pkl")
+if not os.path.isfile(filename):
+    print("Started working on file", filename)
+    fcs_obj.fit(x_train, y_train)
+
+    joblib.dump(fcs_obj, filename)
+    print("Saved file", filename)
+else:
+    fcs_obj = joblib.load(filename)
+    print("Loaded file", filename)
 
 nnf_obj.fit(x_train, y_train)
 

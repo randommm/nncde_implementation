@@ -24,6 +24,8 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.decomposition import PCA
 
 import hashlib
 import pickle
@@ -41,9 +43,9 @@ y_train = np.array(ndf)[:,-1:]
 x_train = np.array(ndf)[:,:-1]
 
 y_train = np.log(y_train + 0.001)
-y_train_min = np.max(y_train)
+y_train_min = np.min(y_train)
 y_train_max = np.max(y_train)
-y_train = (y_train - y_train_min) / y_train_max
+y_train = (y_train - y_train_min) / (y_train_max - y_train_min)
 y_train = (y_train + 0.01) / 1.0202
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
@@ -52,6 +54,7 @@ x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
 fcs_obj = SKLFlexCodeRandomForest(n_estimators=20)
+#Pipeline([('pca', PCA(whiten=True)), ('fcs_obj', fcs_obj)])
 
 name = "fcrf"
 h = hashlib.new('ripemd160')

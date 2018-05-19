@@ -33,12 +33,17 @@ import pandas as pd
 
 from flexcode_skl import SKLFlexCodeRandomForest
 
-from prepare_pnad import df
-
 np.random.seed(10)
-ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:,-1:]
-x_train = np.array(ndf)[:,:-1]
+df = pd.read_csv("dbs/diamonds.csv")
+for column in ['cut', 'color', 'clarity']:
+    new_df = pd.get_dummies(df[column], dummy_na=True,
+                            drop_first=True, prefix=column)
+    df = pd.concat([df, new_df], axis=1)
+    df = df.drop(column, 1)
+
+ndf = df.reindex(np.random.permutation(df.index))
+y_train = np.array(ndf[["price"]])
+x_train = np.array(ndf.drop("price", 1).iloc[:, 1:])
 
 y_train = np.log(y_train + 0.001)
 y_train_min = np.min(y_train)

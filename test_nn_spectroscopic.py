@@ -22,6 +22,8 @@ import scipy.stats as stats
 
 from nncde import NNCDE, set_cache_dir
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 import hashlib
 import pickle
@@ -46,7 +48,7 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 30
+ncomponents = 100
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
@@ -55,10 +57,13 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weight_decay=0.0,
 es=True,
-hls_multiplier=50,
+hls_multiplier=25,
 nhlayers=10,
-gpu=True,
+#gpu=False,
 )
+
+nnf_obj = Pipeline([('stand', StandardScaler()),
+                    ('nnf_obj', nnf_obj)])
 
 nnf_obj.fit(x_train, y_train)
 

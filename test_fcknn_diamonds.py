@@ -31,14 +31,19 @@ from sklearn.externals import joblib
 import os
 import pandas as pd
 
-from flexcode_skl import SKLFlexCodeRandomForest
-
-from prepare_pnad import df
+from flexcode_skl import SKLFlexCodeKNN
 
 np.random.seed(10)
-ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:,-1:]
-x_train = np.array(ndf)[:,:-1]
+df = pd.read_csv("dbs/diamonds.csv")
+for column in ['cut', 'color', 'clarity']:
+    new_df = pd.get_dummies(df[column], dummy_na=True,
+                            drop_first=True, prefix=column)
+    df = pd.concat([df, new_df], axis=1)
+    df = df.drop(column, 1)
+
+ndf = df.reindex(np.random.permutation(df.index))
+y_train = np.array(ndf[["price"]])
+x_train = np.array(ndf.drop("price", 1).iloc[:, 1:])
 
 y_train = np.log(y_train + 0.001)
 y_train_min = np.min(y_train)
@@ -51,23 +56,34 @@ n_train = x_train.shape[0] - n_test
 x_test, y_test = x_train[n_train:], y_train[n_train:]
 x_train, y_train = x_train[:n_train], y_train[:n_train]
 
-fcs_obj = SKLFlexCodeRandomForest(n_estimators=20)
+fcs_cv_obj = SKLFlexCodeKNN()
 
-name = "fcrf"
+cv = ShuffleSplit(n_splits=1, test_size=n_test, random_state=0)
+
+gs_params = dict(
+  k = np.array([1, 5, 15, 25, 35, 45, 55, 65, 75]),
+)
+
+name = "fcknn"
 h = hashlib.new('ripemd160')
 h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))
-filename = ("nncde_fs_cache/fcs_obj_" + name + "_" +
+h.update(pickle.dumps(gs_params))
+filename = ("nncde_fs_cache/fcs_cv_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_obj.fit(x_train, y_train)
+    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=1,
+                           verbose=100)
+    fcs_cv_obj.fit(x_train, y_train)
 
-    joblib.dump(fcs_obj, filename)
+    joblib.dump(fcs_cv_obj, filename)
     print("Saved file", filename)
 else:
-    fcs_obj = joblib.load(filename)
+    fcs_cv_obj = joblib.load(filename)
     print("Loaded file", filename)
+
+fcs_obj = fcs_cv_obj.best_estimator_
 
 print("Score (utility) on test:", fcs_obj.score(x_test, y_test))
 
