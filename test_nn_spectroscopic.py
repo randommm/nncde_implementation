@@ -36,8 +36,8 @@ set_cache_dir("nncde_fs_cache", bytes_limit=30*2**30)
 np.random.seed(10)
 df = pd.read_csv("dbs/spectroscopic.csv", ' ')
 ndf = np.random.permutation(df)
-y_train = np.array(ndf)[:100000,-1:]
-x_train = np.array(ndf)[:100000,:-1]
+y_train = np.array(ndf)[:10000,-1:]
+x_train = np.array(ndf)[:10000,:-1]
 
 n_test = round(min(x_train.shape[0] * 0.10, 5000))
 n_train = x_train.shape[0] - n_test

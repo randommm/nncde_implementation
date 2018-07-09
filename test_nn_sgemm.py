@@ -73,20 +73,24 @@ name = "ann"
 h = hashlib.new('ripemd160')
 h.update(pickle.dumps(x_train))
 h.update(pickle.dumps(y_train))
-filename = ("nncde_fs_cache/fcs_obj_" + name + "_" +
+filename = ("nncde_fs_cache/nnf_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_obj.fit(x_train, y_train)
+    nnf_obj.fit(x_train, y_train)
 
-    joblib.dump(fcs_obj, filename)
+    joblib.dump(nnf_obj, filename)
     print("Saved file", filename)
 else:
-    fcs_obj = joblib.load(filename)
+    nnf_obj = joblib.load(filename)
     print("Loaded file", filename)
-
-nnf_obj.fit(x_train, y_train)
 
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
 print("Score (utility) on test:", nnf_obj.score(x_test, y_test))
+
+
+from flexcode.loss_functions import cde_loss
+cde_estimate = nnf_obj.predict(x_test)
+y_grid = nnf_obj.steps[1][1].y_grid[:,None]
+print(cde_loss(cde_estimate, y_grid, y_test))

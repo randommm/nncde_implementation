@@ -58,7 +58,7 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 50
+ncomponents = 100
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
@@ -67,7 +67,7 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weight_decay=0.0,
 es=True,
-hls_multiplier=50,
+hls_multiplier=25,
 nhlayers=10,
 #gpu=False,
 )

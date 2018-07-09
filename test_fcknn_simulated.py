@@ -30,11 +30,11 @@ import pickle
 from sklearn.externals import joblib
 import os
 
-from flexcode_skl import FlexCodeSKL
+from flexcode_skl import SKLFlexCodeKNN
 
 from generate_data import generate_data, true_pdf_calc
 
-n_train = 100_000
+n_train = 10_000
 n_test = 1000
 x_train, y_train = generate_data(n_train)
 x_test, y_test = generate_data(n_test)
@@ -42,7 +42,7 @@ y_train = y_train[:, None]
 y_test = y_test[:, None]
 
 
-fcs_cv_obj = FlexCodeSKL()
+fcs_cv_obj = SKLFlexCodeKNN()
 
 cv = ShuffleSplit(n_splits=1, test_size=0.1, random_state=0)
 
@@ -59,7 +59,7 @@ filename = ("nncde_fs_cache/fcs_cv_obj_" + name + "_" +
             h.hexdigest() + ".pkl")
 if not os.path.isfile(filename):
     print("Started working on file", filename)
-    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=2,
+    fcs_cv_obj = GridSearchCV(fcs_cv_obj, gs_params, cv=cv, n_jobs=4,
                            verbose=100)
     fcs_cv_obj.fit(x_train, y_train)
 

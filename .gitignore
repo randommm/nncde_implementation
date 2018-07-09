@@ -6,3 +6,4 @@ MANIFEST
 *nncde_fs_cache
 plots/
 *.csv
+*.pkl

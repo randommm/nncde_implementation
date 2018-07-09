@@ -19,18 +19,21 @@ from sklearn.externals import joblib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-z_predicted_nn = joblib.load("z_pred_nn_pnad.pkl")
-z_predicted_rf = joblib.load("z_pred_rf_pnad.pkl")
+z_predicted_nn = joblib.load("z_pred_nn_sgemm.pkl")
+z_predicted_rf = joblib.load("z_pred_rf_sgemm.pkl")
 
 fig = plt.figure()
 ax = fig.add_subplot(111)
 ax.plot(np.linspace(0, 1, len(z_predicted_nn)), z_predicted_nn, color="blue", label="ANN Fourier")
 ax.plot(np.linspace(0, 1, len(z_predicted_rf)), z_predicted_rf, color="green", label="FC RF", linestyle="--")
+ax.set_ylim(0, 100)
+ax.set_yscale('symlog')
+
 
 ax.set_xlabel("$y$")
 ax.set_ylabel("$f(y)$")
 
 legend = ax.legend()
 
-with PdfPages("plots/compare_pnad.pdf") as ps:
+with PdfPages("plots/compare_sgemm.pdf") as ps:
     ps.savefig(fig, bbox_inches='tight')
