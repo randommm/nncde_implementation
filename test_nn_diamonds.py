@@ -75,7 +75,21 @@ nhlayers=10,
 nnf_obj = Pipeline([('stand', StandardScaler()),
                     ('nnf_obj', nnf_obj)])
 
-nnf_obj.fit(x_train, y_train)
+name = "ann"
+h = hashlib.new('ripemd160')
+h.update(pickle.dumps(x_train))
+h.update(pickle.dumps(y_train))
+filename = ("nncde_fs_cache/nnf_obj_" + name + "_" +
+            h.hexdigest() + ".pkl")
+if not os.path.isfile(filename):
+    print("Started working on file", filename)
+    nnf_obj.fit(x_train, y_train)
+
+    joblib.dump(nnf_obj, filename)
+    print("Saved file", filename)
+else:
+    nnf_obj = joblib.load(filename)
+    print("Loaded file", filename)
 
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))

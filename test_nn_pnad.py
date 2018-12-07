@@ -53,7 +53,7 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
-ncomponents = 100
+ncomponents = 1000
 
 nnf_obj = NNCDE(
 ncomponents=ncomponents,
@@ -62,7 +62,7 @@ beta_loss_penal_exp=0.0,
 beta_loss_penal_base=0.0,
 nn_weight_decay=0.0,
 es=True,
-hls_multiplier=25,
+hls_multiplier=2,
 nhlayers=10,
 #gpu=False,
 )
@@ -70,7 +70,21 @@ nhlayers=10,
 nnf_obj = Pipeline([('stand', StandardScaler()),
                     ('nnf_obj', nnf_obj)])
 
-nnf_obj.fit(x_train, y_train)
+name = "ann"
+h = hashlib.new('ripemd160')
+h.update(pickle.dumps(x_train))
+h.update(pickle.dumps(y_train))
+filename = ("nncde_fs_cache/nnf_obj_" + name + "_" +
+            h.hexdigest() + ".pkl")
+if not os.path.isfile(filename):
+    print("Started working on file", filename)
+    nnf_obj.fit(x_train, y_train)
+
+    joblib.dump(nnf_obj, filename)
+    print("Saved file", filename)
+else:
+    nnf_obj = joblib.load(filename)
+    print("Loaded file", filename)
 
 #Check without using true density information
 print("Score (utility) on train:", nnf_obj.score(x_train, y_train))
