@@ -26,6 +26,7 @@ from flexcode_skl import SKLFlexCodeRandomForest
 from flexcode_skl import SKLFlexCodeKNN
 from flexcode_skl import SKLFlexCodeXGBoost
 from prepare_pnad import get_pnad_db
+from prepare_sgemm import get_sgemm_db
 
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn.pipeline import Pipeline
@@ -40,7 +41,7 @@ import os
 import time
 import pandas as pd
 
-def call_test(dataset, model):
+def call_test(dataset, model, preprocess):
     np.random.seed(10)
     if dataset == "diamonds":
         df = pd.read_csv("dbs/diamonds.csv")
@@ -95,6 +96,24 @@ def call_test(dataset, model):
         n_train = x_train.shape[0] - n_test
         x_test, y_test = x_train[n_train:], y_train[n_train:]
         x_train, y_train = x_train[:n_train], y_train[:n_train]
+    elif dataset == "sgemm":
+        df = get_sgemm_db()
+        ndf = np.random.permutation(df)
+        y_train = np.array(ndf)[:,-1:]
+        x_train = np.array(ndf)[:,:-1]
+
+        y_train = np.log(y_train + 0.001)
+        y_train_min = np.min(y_train)
+        y_train_max = np.max(y_train)
+        y_train = (y_train - y_train_min) / (y_train_max - y_train_min)
+        y_train = (y_train + 0.01) / 1.0202
+
+        n_test = round(min(x_train.shape[0] * 0.10, 5000))
+        n_train = x_train.shape[0] - n_test
+        x_test, y_test = x_train[n_train:], y_train[n_train:]
+        x_train, y_train = x_train[:n_train], y_train[:n_train]
+    else:
+        raise ValueError()
 
     if model == "rf":
         mobj = SKLFlexCodeRandomForest(n_estimators=20)
@@ -110,8 +129,10 @@ def call_test(dataset, model):
         cv = ShuffleSplit(n_splits=1, test_size=n_test, random_state=0)
         gs_params = dict(max_depth = np.array([6, 12]))
         mobj = GridSearchCV(mobj, gs_params, cv=cv, n_jobs=1)
-    elif model == "ann":
+    elif model == "ann_1000" or model == "ann_100":
         ncomponents = 1000
+        if model == "ann_100":
+            ncomponents = 100
         mobj = NNCDE(
             ncomponents=ncomponents,
             verbose=2,
@@ -123,16 +144,27 @@ def call_test(dataset, model):
             num_layers=10,
             #gpu=False,
         )
+    else:
+        raise ValueError()
+
+    if preprocess == "standard":
         mobj = Pipeline([
             ('stand', StandardScaler()),
-            ('nnf_obj', mobj)]
+            ('estim', mobj)]
         )
+    elif preprocess is "none":
+        pass
+    else:
+        raise ValueError()
 
     h = hashlib.new('ripemd160')
     h.update(pickle.dumps(x_train))
     h.update(pickle.dumps(y_train))
-    filename = ("models_cache/mobj_" + model + "_" +
-                h.hexdigest() + ".pkl")
+    filename = "models_cache/"
+    filename += "model_" + model
+    filename += "_preprocess_" + preprocess
+    filename += "_data_" + h.hexdigest()
+    filename += ".pkl"
     if not os.path.isfile(filename):
         print("Started working on file", filename)
         start_time = time.time()
@@ -144,16 +176,28 @@ def call_test(dataset, model):
         mobj, elapsed_time = joblib.load(filename)
         print("Loaded file", filename)
 
+    score = mobj.score(x_test, y_test)
     print("Dataset:", dataset)
     print("Model:", model)
-    #print("Score (utility) on test:", mobj.score(x_test, y_test))
+    print("Preprocess:", preprocess)
+    print("Score (utility) on test:", score)
     print("Elapsed time:", elapsed_time)
+    return score, elapsed_time
 
-    return mobj, elapsed_time
+datasets = ["diamonds", "sgemm", "spect_10", "spect_100", "pnad"]
+models = ["ann_100", "ann_1000", "rf", "knn", "xgb"]
+preprocesses = ["standard", "none"]
 
-datasets = ["diamonds", "pnad", "spect_10", "spect_100"]
-models = ["rf", "knn", "xgb", "ann"]
+df = pd.DataFrame(columns=[
+    'dataset', 'model', 'preprocess', 'score', 'elapsed_time'
+])
 
-for dataset in datasets:
-    for model in models:
-        call_test(dataset, model)
+for model in models:
+    for dataset in datasets:
+        for preprocess in preprocesses:
+
+            score, elapsed_time = call_test(dataset, model, preprocess)
+            df.loc[len(df)] = (
+                dataset, model, preprocess, score, elapsed_time
+            )
+            print(df)

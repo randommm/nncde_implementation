@@ -14,7 +14,7 @@ class SKLFlexCodeBase(BaseEstimator):
         x_train, y_train = x_train[:n_train], y_train[:n_train]
 
         self.fcmodel.fit(x_train, y_train)
-        self.fcmodel.tune(x_val, y_val)
+        self.fcmodel.tune(x_val, y_val, n_grid=10000)
 
         return self
 
@@ -31,7 +31,7 @@ class SKLFlexCodeBase(BaseEstimator):
                 #del(pred)
 
         #return prediction, grid
-        return self.fcmodel.predict(x_pred, n_grid=1000)
+        return self.fcmodel.predict(x_pred, n_grid=10000)
 
     #def score2(self, x_test, y_test):
     #    prediction, grid = self.fcmodel.predict(x_test, n_grid=1000)
@@ -39,7 +39,7 @@ class SKLFlexCodeBase(BaseEstimator):
     #    return - self.fcmodel.estimate_error(x_test, y_test)
 
     def score(self, x_test, y_test):
-        return - self.fcmodel.estimate_error(x_test, y_test, n_grid = 1000)
+        return - self.fcmodel.estimate_error(x_test, y_test, n_grid = 10000)
 
 class SKLFlexCodeKNN(SKLFlexCodeBase):
     def __init__(self, k=5, max_basis=30):
