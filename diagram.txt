@@ -1,0 +1,43 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam handwritten true
+
+skinparam usecase {
+	BorderColor Black
+	BackgroundColor Khaki
+	FontName Impact
+	FontSize 17
+	FontColor #090C0F
+
+	ArrowColor Olive
+}
+
+node "<math>\text{Dataset } D</math>" as dataset
+
+node "<math>\text{Features }\
+x = (x_1, x_2, ..., x_n)</math>" as features
+
+node "<math>\text{Response variable }\
+y</math>" as response
+
+usecase "Neural network" as nn
+
+usecase "Fourier coeficients\n\
+<math>(\beta_1, \beta_2, ..., \beta_n)</math>" as coef
+
+usecase "Density function\n\
+<math>f(.|x)</math>" as density
+
+usecase "\nLoss\n\
+<math>\int_0^1 (f(k|x))^2 dk - 2  f(y|x)</math>" as loss
+
+dataset --> features
+dataset --> response
+
+features --> nn: input
+nn -> coef: output
+coef --> density: Fourier series\n and softplus
+density -> loss
+
+response ---> loss
+@enduml
